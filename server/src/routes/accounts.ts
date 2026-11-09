@@ -1,7 +1,13 @@
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { Db } from '../db/client.js';
-import { accounts, transactions } from '../db/schema.js';
+import {
+  accounts,
+  categories,
+  READY_TO_ASSIGN_KEY,
+  transactionLines,
+  transactions,
+} from '../db/schema.js';
 import {
   accountName,
   date,
@@ -57,10 +63,22 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db) {
           .values({ name })
           .returning({ id: accounts.id, name: accounts.name });
         if (balanceCents !== 0) {
-          await tx.insert(transactions).values({
-            accountId: created!.id,
-            date: startingDate,
-            payee: STARTING_BALANCE_PAYEE,
+          const [readyToAssign] = await tx
+            .select({ id: categories.id })
+            .from(categories)
+            .where(eq(categories.systemKey, READY_TO_ASSIGN_KEY));
+          const [starting] = await tx
+            .insert(transactions)
+            .values({
+              accountId: created!.id,
+              date: startingDate,
+              payee: STARTING_BALANCE_PAYEE,
+              amountCents: balanceCents,
+            })
+            .returning({ id: transactions.id });
+          await tx.insert(transactionLines).values({
+            transactionId: starting!.id,
+            categoryId: readyToAssign!.id,
             amountCents: balanceCents,
           });
         }

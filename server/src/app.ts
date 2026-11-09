@@ -2,6 +2,8 @@ import { sql } from 'drizzle-orm';
 import Fastify from 'fastify';
 import type { Db } from './db/client.js';
 import { registerAccountRoutes } from './routes/accounts.js';
+import { registerBudgetRoutes } from './routes/budget.js';
+import { registerCategoryRoutes } from './routes/categories.js';
 import { registerTransactionRoutes } from './routes/transactions.js';
 
 export function buildApp(db: Db, options: { logger?: boolean } = {}) {
@@ -14,6 +16,8 @@ export function buildApp(db: Db, options: { logger?: boolean } = {}) {
 
   registerAccountRoutes(app, db);
   registerTransactionRoutes(app, db);
+  registerCategoryRoutes(app, db);
+  registerBudgetRoutes(app, db);
 
   return app;
 }

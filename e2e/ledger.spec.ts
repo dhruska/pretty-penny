@@ -90,6 +90,6 @@ test('renames and deletes an account', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Delete account' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
-  await expect(page.getByText('Select or add an account')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Ready to Assign' })).toBeVisible();
   await expect(sidebarAccount(page, 'New name')).toHaveCount(0);
 });

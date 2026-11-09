@@ -13,6 +13,7 @@
   --primary-foreground: oklch(0.985 0.002 250);
   --positive: oklch(0.5 0.13 150);
   --negative: oklch(0.52 0.19 25);
+  --warning: oklch(0.55 0.13 70);
   --secondary: var(--muted);
   --secondary-foreground: var(--foreground);
   --accent: var(--muted);
@@ -36,6 +37,7 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-positive: var(--positive);
   --color-negative: var(--negative);
+  --color-warning: var(--warning);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-accent: var(--accent);

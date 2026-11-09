@@ -11,6 +11,8 @@ export interface Transaction {
   payee: string;
   memo: string;
   amountCents: number;
+  categoryId: number | null;
+  categoryName: string | null;
   runningBalanceCents: number;
 }
 
@@ -19,7 +21,42 @@ export interface TransactionInput {
   payee: string;
   memo: string;
   amountCents: number;
+  categoryId: number | null;
 }
+
+export interface Category {
+  id: number;
+  name: string;
+  hidden: boolean;
+}
+
+export interface CategoryGroup<C extends Category = Category> {
+  id: number;
+  name: string;
+  hidden: boolean;
+  categories: C[];
+}
+
+export interface Categories {
+  readyToAssignId: number;
+  groups: CategoryGroup[];
+}
+
+export interface BudgetCategory extends Category {
+  assignedCents: number;
+  activityCents: number;
+  availableCents: number;
+}
+
+export interface Budget {
+  month: string;
+  readyToAssignCents: number;
+  uncategorized: { accountId: number; accountName: string; count: number }[];
+  groups: CategoryGroup<BudgetCategory>[];
+}
+
+export type MoveDirection = 'up' | 'down';
+type CategoryChanges = { name?: string; hidden?: boolean };
 
 async function request<T>(path: string, method = 'GET', body?: object): Promise<T> {
   const response = await fetch(`/api${path}`, {
@@ -51,4 +88,22 @@ export const api = {
   updateTransaction: (id: number, input: TransactionInput) =>
     request<void>(`/transactions/${id}`, 'PATCH', input),
   deleteTransaction: (id: number) => request<void>(`/transactions/${id}`, 'DELETE'),
+  getBudget: (month: string, currentMonth: string) =>
+    request<Budget>(`/budget?month=${month}&currentMonth=${currentMonth}`),
+  setAssignment: (month: string, categoryId: number, assignedCents: number) =>
+    request<void>(`/budget/${month}/categories/${categoryId}`, 'PUT', { assignedCents }),
+  listCategories: () => request<Categories>('/categories'),
+  createGroup: (name: string) => request<void>('/category-groups', 'POST', { name }),
+  updateGroup: (id: number, changes: CategoryChanges) =>
+    request<void>(`/category-groups/${id}`, 'PATCH', changes),
+  moveGroup: (id: number, direction: MoveDirection) =>
+    request<void>(`/category-groups/${id}/move`, 'POST', { direction }),
+  deleteGroup: (id: number) => request<void>(`/category-groups/${id}`, 'DELETE'),
+  createCategory: (groupId: number, name: string) =>
+    request<void>('/categories', 'POST', { groupId, name }),
+  updateCategory: (id: number, changes: CategoryChanges & { groupId?: number }) =>
+    request<void>(`/categories/${id}`, 'PATCH', changes),
+  moveCategory: (id: number, direction: MoveDirection) =>
+    request<void>(`/categories/${id}/move`, 'POST', { direction }),
+  deleteCategory: (id: number) => request<void>(`/categories/${id}`, 'DELETE'),
 };

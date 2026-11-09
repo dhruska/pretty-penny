@@ -2,7 +2,7 @@
 
 A personal, self-hosted envelope budgeting app.
 
-This project is in early development. You can currently create accounts, record transactions, and see balances.
+This project is in early development. You can currently create accounts, record and categorize transactions, and assign money to categories, with balances that roll over from month to month.
 
 ## Tech stack
 

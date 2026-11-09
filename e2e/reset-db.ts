@@ -1,5 +1,6 @@
 import postgres from 'postgres';
 
+/** Clears all data except the Ready to Assign category seeded by migrations. */
 export async function resetDb() {
   const url = process.env.TEST_DATABASE_URL;
   if (!url || !/_test(\?|$)/.test(url)) {
@@ -8,7 +9,9 @@ export async function resetDb() {
 
   const sql = postgres(url, { onnotice: () => {} });
   try {
-    await sql`truncate accounts, transactions restart identity cascade`;
+    await sql`truncate accounts, transactions, transaction_lines, monthly_assignments restart identity cascade`;
+    await sql`delete from categories where system_key is null`;
+    await sql`delete from category_groups`;
   } finally {
     await sql.end();
   }

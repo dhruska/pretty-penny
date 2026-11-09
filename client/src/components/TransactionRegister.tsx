@@ -6,7 +6,7 @@ import { ConfirmDelete } from './ConfirmDelete';
 import { Money } from './Money';
 import { TransactionForm } from './TransactionForm';
 
-const COLUMN_COUNT = 7;
+const COLUMN_COUNT = 8;
 
 export function TransactionRegister({ transactions }: { transactions: Transaction[] }) {
   const queryClient = useQueryClient();
@@ -37,13 +37,14 @@ export function TransactionRegister({ transactions }: { transactions: Transactio
         <table className="w-full min-w-[44rem] text-sm">
           <thead className="border-b text-left text-muted-foreground">
             <tr>
-              <th className="px-3 py-2 font-medium">Date</th>
-              <th className="px-3 py-2 font-medium">Payee</th>
-              <th className="px-3 py-2 font-medium">Memo</th>
-              <th className="px-3 py-2 text-right font-medium">Outflow</th>
-              <th className="px-3 py-2 text-right font-medium">Inflow</th>
-              <th className="px-3 py-2 text-right font-medium">Balance</th>
-              <th className="px-3 py-2">
+              <th className="px-2 py-2 font-medium">Date</th>
+              <th className="px-2 py-2 font-medium">Payee</th>
+              <th className="px-2 py-2 font-medium">Category</th>
+              <th className="px-2 py-2 font-medium">Memo</th>
+              <th className="px-2 py-2 text-right font-medium">Outflow</th>
+              <th className="px-2 py-2 text-right font-medium">Inflow</th>
+              <th className="px-2 py-2 text-right font-medium">Balance</th>
+              <th className="px-2 py-2">
                 <span className="sr-only">Actions</span>
               </th>
             </tr>
@@ -64,21 +65,26 @@ export function TransactionRegister({ transactions }: { transactions: Transactio
                 </tr>
               ) : (
                 <tr key={transaction.id} className="border-b last:border-0">
-                  <td className="px-3 py-1.5 whitespace-nowrap tabular-nums">{transaction.date}</td>
-                  <td className="px-3 py-1.5">{transaction.payee}</td>
-                  <td className="px-3 py-1.5 text-muted-foreground">{transaction.memo}</td>
-                  <td className="px-3 py-1.5 text-right">
+                  <td className="px-2 py-1.5 whitespace-nowrap tabular-nums">{transaction.date}</td>
+                  <td className="px-2 py-1.5">{transaction.payee}</td>
+                  <td className="px-2 py-1.5">
+                    {transaction.categoryName ?? (
+                      <span className="font-medium text-warning">Uncategorized</span>
+                    )}
+                  </td>
+                  <td className="px-2 py-1.5 text-muted-foreground">{transaction.memo}</td>
+                  <td className="px-2 py-1.5 text-right">
                     {transaction.amountCents < 0 && (
                       <Money cents={-transaction.amountCents} className="text-foreground" />
                     )}
                   </td>
-                  <td className="px-3 py-1.5 text-right">
+                  <td className="px-2 py-1.5 text-right">
                     {transaction.amountCents > 0 && <Money cents={transaction.amountCents} />}
                   </td>
-                  <td className="px-3 py-1.5 text-right">
+                  <td className="px-2 py-1.5 text-right">
                     <Money cents={transaction.runningBalanceCents} />
                   </td>
-                  <td className="px-3 py-1 text-right whitespace-nowrap">
+                  <td className="px-2 py-1 text-right whitespace-nowrap">
                     <Button variant="ghost" size="sm" onClick={() => setEditingId(transaction.id)}>
                       Edit
                     </Button>

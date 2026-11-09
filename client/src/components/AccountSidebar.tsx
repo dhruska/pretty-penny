@@ -16,6 +16,19 @@ export function AccountSidebar() {
     >
       <h1 className="mb-4 text-lg font-semibold">Pretty Penny</h1>
 
+      <NavLink
+        to="/"
+        end
+        className={({ isActive }) =>
+          cn(
+            'mb-4 block rounded-md px-2 py-1.5 text-sm hover:bg-muted',
+            isActive && 'bg-muted font-medium',
+          )
+        }
+      >
+        Budget
+      </NavLink>
+
       {accounts.isError && <p className="text-sm text-negative">{accounts.error.message}</p>}
 
       <nav className="space-y-1">

@@ -5,7 +5,7 @@ import { BrowserRouter, Route, Routes } from 'react-router';
 import { AppLayout } from './components/AppLayout';
 import './index.css';
 import { AccountPage } from './pages/AccountPage';
-import { WelcomePage } from './pages/WelcomePage';
+import { BudgetPage } from './pages/BudgetPage';
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
@@ -15,7 +15,7 @@ createRoot(document.getElementById('root')!).render(
       <BrowserRouter>
         <Routes>
           <Route element={<AppLayout />}>
-            <Route index element={<WelcomePage />} />
+            <Route index element={<BudgetPage />} />
             <Route path="accounts/:id" element={<AccountPage />} />
           </Route>
         </Routes>
