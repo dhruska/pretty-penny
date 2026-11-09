@@ -1,0 +1,45 @@
+@import 'tailwindcss';
+
+/* Design tokens. Type sizes use Tailwind's default scale; money uses the `tabular-nums` utility. */
+:root {
+  --background: oklch(0.985 0.002 250);
+  --foreground: oklch(0.22 0.015 255);
+  --card: oklch(1 0 0);
+  --card-foreground: var(--foreground);
+  --muted: oklch(0.955 0.004 250);
+  --muted-foreground: oklch(0.5 0.015 255);
+  --border: oklch(0.91 0.005 250);
+  --primary: oklch(0.45 0.13 255);
+  --primary-foreground: oklch(0.985 0.002 250);
+  --positive: oklch(0.5 0.13 150);
+  --negative: oklch(0.52 0.19 25);
+  --radius: 0.5rem;
+}
+
+@theme inline {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 6px);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}

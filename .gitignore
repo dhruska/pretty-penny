@@ -1,0 +1,22 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.log
+
+# Financial data and backups must never be committed. Fixtures must use made-up data.
+*.csv
+!**/fixtures/**/*.csv
+*.ofx
+*.qfx
+*.qif
+*.dump
+*.sql
+!server/migrations/**/*.sql
+*.backup
+/data/
+/backups/
+.DS_Store
+test-results/
+playwright-report/

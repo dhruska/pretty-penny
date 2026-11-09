@@ -1,0 +1,26 @@
+{
+  "name": "@pretty-penny/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start:test": "tsx src/index.ts",
+    "build": "tsc --noEmit && tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/db/migrate.ts"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.10",
+    "drizzle-orm": "^0.45.4",
+    "fastify": "^5.12.8",
+    "postgres": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.23.15",
+    "vitest": "^4.1.12"
+  }
+}
