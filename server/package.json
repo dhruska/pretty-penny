@@ -9,7 +9,8 @@
     "build": "tsc --noEmit && tsc -p tsconfig.build.json",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/db/migrate.ts"
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:migrate:test": "tsx src/db/migrate.ts --test"
   },
   "dependencies": {
     "dotenv": "^18.0.10",

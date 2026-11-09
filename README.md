@@ -2,7 +2,7 @@
 
 A personal, self-hosted envelope budgeting app.
 
-This project is in early development. It currently contains the project scaffolding and a hello world page.
+This project is in early development. You can currently create accounts, record transactions, and see balances.
 
 ## Tech stack
 
@@ -20,8 +20,8 @@ You'll need [nvm](https://github.com/nvm-sh/nvm) and Postgres 17. These steps us
    ```sh
    brew install postgresql@17
    brew services start postgresql@17
-   /opt/homebrew/opt/postgresql@17/bin/createdb simple_budget_dev
-   /opt/homebrew/opt/postgresql@17/bin/createdb simple_budget_test
+   /opt/homebrew/opt/postgresql@17/bin/createdb pretty_penny_dev
+   /opt/homebrew/opt/postgresql@17/bin/createdb pretty_penny_test
    ```
 
 2. Switch to the project's Node version and install dependencies.
@@ -38,11 +38,10 @@ You'll need [nvm](https://github.com/nvm-sh/nvm) and Postgres 17. These steps us
    cp .env.example .env
    ```
 
-4. Apply migrations to both databases.
+4. Apply migrations to the development database. `npm test` migrates the test database automatically.
 
    ```sh
    npm run db:migrate
-   DATABASE_URL=postgres://localhost:5432/simple_budget_test npm run db:migrate
    ```
 
 5. Start the app, then open <http://localhost:5173>.

@@ -1,6 +1,8 @@
 import { sql } from 'drizzle-orm';
 import Fastify from 'fastify';
 import type { Db } from './db/client.js';
+import { registerAccountRoutes } from './routes/accounts.js';
+import { registerTransactionRoutes } from './routes/transactions.js';
 
 export function buildApp(db: Db, options: { logger?: boolean } = {}) {
   const app = Fastify({ logger: options.logger ?? false });
@@ -9,6 +11,9 @@ export function buildApp(db: Db, options: { logger?: boolean } = {}) {
     await db.execute(sql`select 1`);
     return { message: 'Hello from Pretty Penny' };
   });
+
+  registerAccountRoutes(app, db);
+  registerTransactionRoutes(app, db);
 
   return app;
 }

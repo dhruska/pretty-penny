@@ -11,6 +11,8 @@ if (!testDatabaseUrl) throw new Error('TEST_DATABASE_URL is required');
 
 export default defineConfig({
   testDir: './e2e',
+  // Tests share one database and clear it before each test.
+  workers: 1,
   use: { baseURL: `http://localhost:${WEB_PORT}` },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [

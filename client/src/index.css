@@ -13,6 +13,13 @@
   --primary-foreground: oklch(0.985 0.002 250);
   --positive: oklch(0.5 0.13 150);
   --negative: oklch(0.52 0.19 25);
+  --secondary: var(--muted);
+  --secondary-foreground: var(--foreground);
+  --accent: var(--muted);
+  --accent-foreground: var(--foreground);
+  --destructive: var(--negative);
+  --input: var(--border);
+  --ring: var(--primary);
   --radius: 0.5rem;
 }
 
@@ -29,6 +36,14 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-positive: var(--positive);
   --color-negative: var(--negative);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 2px);
   --radius-md: var(--radius);
   --radius-lg: calc(var(--radius) + 2px);
   --radius-xl: calc(var(--radius) + 6px);
