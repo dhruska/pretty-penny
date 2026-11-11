@@ -1,4 +1,5 @@
 import {
+  type AnyPgColumn,
   bigint,
   boolean,
   date,
@@ -15,6 +16,10 @@ export const READY_TO_ASSIGN_KEY = 'ready_to_assign';
 export const accounts = pgTable('accounts', {
   id: integer().primaryKey().generatedAlwaysAsIdentity(),
   name: text().notNull(),
+  // One of ACCOUNT_TYPES in account-types.ts. on_budget is set from it at creation and never changes.
+  type: text().notNull().default('checking'),
+  onBudget: boolean('on_budget').notNull().default(true),
+  closedAt: timestamp('closed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -30,9 +35,18 @@ export const transactions = pgTable(
     memo: text().notNull().default(''),
     // Negative for outflows. Limits in routes/schemas.ts keep this within JavaScript's safe range.
     amountCents: bigint('amount_cents', { mode: 'number' }).notNull(),
+    isStartingBalance: boolean('is_starting_balance').notNull().default(false),
+    // Both sides of a transfer point at each other, and deleting either side deletes both.
+    transferTransactionId: integer('transfer_transaction_id').references(
+      (): AnyPgColumn => transactions.id,
+      { onDelete: 'cascade' },
+    ),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index('transactions_account_order_idx').on(table.accountId, table.date)],
+  (table) => [
+    index('transactions_account_order_idx').on(table.accountId, table.date),
+    unique('transactions_transfer_unique').on(table.transferTransactionId),
+  ],
 );
 
 export const categoryGroups = pgTable('category_groups', {

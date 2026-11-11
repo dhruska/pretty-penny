@@ -1,15 +1,17 @@
-import type { Transaction, TransactionInput } from '@/api';
+import { api, type Account, type Transaction, type TransactionInput } from '@/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { today } from '@/lib/dates';
 import { amountFromFields, centsToInput } from '@/lib/money';
+import { useQuery } from '@tanstack/react-query';
 import { useId, useState, type ComponentProps, type FormEvent } from 'react';
-import { CategorySelect } from './CategorySelect';
+import { CategorySelect, SELECT_CLASS } from './CategorySelect';
 
 interface TransactionFormProps {
   label: string;
   submitLabel: string;
+  account: Account;
   transaction?: Transaction;
   onSubmit: (input: TransactionInput) => Promise<void>;
   onCancel?: () => void;
@@ -18,13 +20,18 @@ interface TransactionFormProps {
 export function TransactionForm({
   label,
   submitLabel,
+  account,
   transaction,
   onSubmit,
   onCancel,
 }: TransactionFormProps) {
   const id = useId();
+  const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts });
   const amount = transaction?.amountCents ?? 0;
   const [date, setDate] = useState(transaction?.date ?? today());
+  const [transferAccountId, setTransferAccountId] = useState(
+    transaction?.transferAccountId ?? null,
+  );
   const [payee, setPayee] = useState(transaction?.payee ?? '');
   const [categoryId, setCategoryId] = useState(transaction?.categoryId ?? null);
   const [memo, setMemo] = useState(transaction?.memo ?? '');
@@ -32,6 +39,18 @@ export function TransactionForm({
   const [inflow, setInflow] = useState(amount > 0 ? centsToInput(amount) : '');
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // A closed account stays listed only if this transaction already transfers to it.
+  const transferOptions = (accounts.data ?? []).filter(
+    (option) =>
+      option.id !== account.id && (!option.closed || option.id === transaction?.transferAccountId),
+  );
+  const transferAccount = transferOptions.find((option) => option.id === transferAccountId);
+  const isTransfer = transferAccountId !== null;
+  // Only money entering or leaving the budget gets a category.
+  const usesCategory = isTransfer
+    ? transferAccount !== undefined && transferAccount.onBudget !== account.onBudget
+    : account.onBudget;
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -49,8 +68,16 @@ export function TransactionForm({
     setError(null);
     setIsSaving(true);
     try {
-      await onSubmit({ date, payee, memo, categoryId, amountCents: result.cents });
+      await onSubmit({
+        date,
+        payee: isTransfer ? '' : payee,
+        memo,
+        categoryId: usesCategory ? categoryId : null,
+        transferAccountId,
+        amountCents: result.cents,
+      });
       if (!transaction) {
+        setTransferAccountId(null);
         setPayee('');
         setCategoryId(null);
         setMemo('');
@@ -85,8 +112,8 @@ export function TransactionForm({
 
   return (
     <form aria-label={label} onSubmit={handleSubmit} className="space-y-2">
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-[9.5rem_1fr_1.3fr_1fr_5.5rem_5.5rem]">
-        <div className="col-span-2 space-y-1 lg:col-span-1">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-[9rem_10rem_1fr_1.2fr_1fr_5.5rem_5.5rem]">
+        <div className="col-span-2 space-y-1 md:col-span-1">
           <Label htmlFor={`${id}-date`}>Date</Label>
           <Input
             id={`${id}-date`}
@@ -95,12 +122,40 @@ export function TransactionForm({
             onChange={(event) => setDate(event.target.value)}
           />
         </div>
-        {textField('Payee', payee, setPayee, { maxLength: 200 })}
+        <div className="min-w-0 space-y-1">
+          <Label htmlFor={`${id}-transfer`}>Transfer</Label>
+          <select
+            id={`${id}-transfer`}
+            className={SELECT_CLASS}
+            value={transferAccountId ?? ''}
+            onChange={(event) =>
+              setTransferAccountId(event.target.value === '' ? null : Number(event.target.value))
+            }
+          >
+            <option value="">Not a transfer</option>
+            {transferOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        {isTransfer
+          ? textField('Payee', `Transfer: ${transferAccount?.name ?? ''}`, () => {}, {
+              disabled: true,
+            })
+          : textField('Payee', payee, setPayee, { maxLength: 200 })}
         <div className="min-w-0 space-y-1">
           <Label htmlFor={`${id}-category`}>Category</Label>
-          <CategorySelect id={`${id}-category`} value={categoryId} onChange={setCategoryId} />
+          {usesCategory ? (
+            <CategorySelect id={`${id}-category`} value={categoryId} onChange={setCategoryId} />
+          ) : (
+            <select id={`${id}-category`} className={SELECT_CLASS} disabled>
+              <option>Not needed</option>
+            </select>
+          )}
         </div>
-        <div className="col-span-2 lg:col-span-1">
+        <div className="col-span-2 md:col-span-2 xl:col-span-1">
           {textField('Memo', memo, setMemo, { maxLength: 500 })}
         </div>
         {textField('Outflow', outflow, setOutflow, { inputMode: 'decimal' })}

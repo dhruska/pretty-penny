@@ -7,11 +7,13 @@ import { parseDollars } from '@/lib/money';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
+import { AccountTypeSelect } from './AccountTypeSelect';
 
 export function AddAccountForm() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [name, setName] = useState('');
+  const [type, setType] = useState('checking');
   const [startingBalance, setStartingBalance] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -40,7 +42,7 @@ export function AddAccountForm() {
     }
 
     setError(null);
-    createAccount.mutate({ name, startingBalanceCents, date: today() });
+    createAccount.mutate({ name, type, startingBalanceCents, date: today() });
   }
 
   return (
@@ -54,6 +56,14 @@ export function AddAccountForm() {
           maxLength={100}
           onChange={(event) => setName(event.target.value)}
         />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="account-type">Account type</Label>
+        <AccountTypeSelect id="account-type" value={type} onChange={setType} />
+        <p className="text-xs text-muted-foreground">
+          Budget accounts count toward your budget. Tracking accounts only count toward net worth,
+          and this can’t be changed later.
+        </p>
       </div>
       <div className="space-y-1">
         <Label htmlFor="starting-balance">Starting balance</Label>

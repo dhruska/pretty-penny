@@ -109,7 +109,7 @@ describe('accounts', () => {
     const response = await call('PATCH', `/api/accounts/${account.id}`, { name: 'Bills' });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ id: account.id, name: 'Bills' });
+    expect(response.json()).toMatchObject({ id: account.id, name: 'Bills' });
   });
 
   it('deletes an account that only has a starting balance', async () => {

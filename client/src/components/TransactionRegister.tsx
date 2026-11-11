@@ -1,4 +1,4 @@
-import { api, type Transaction, type TransactionInput } from '@/api';
+import { api, type Account, type Transaction, type TransactionInput } from '@/api';
 import { Button } from '@/components/ui/button';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -8,7 +8,13 @@ import { TransactionForm } from './TransactionForm';
 
 const COLUMN_COUNT = 8;
 
-export function TransactionRegister({ transactions }: { transactions: Transaction[] }) {
+export function TransactionRegister({
+  account,
+  transactions,
+}: {
+  account: Account;
+  transactions: Transaction[];
+}) {
   const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState<number | null>(null);
 
@@ -57,6 +63,7 @@ export function TransactionRegister({ transactions }: { transactions: Transactio
                     <TransactionForm
                       label="Edit transaction"
                       submitLabel="Save"
+                      account={account}
                       transaction={transaction}
                       onSubmit={(input) => saveEdit(transaction.id, input)}
                       onCancel={() => setEditingId(null)}
@@ -66,11 +73,16 @@ export function TransactionRegister({ transactions }: { transactions: Transactio
               ) : (
                 <tr key={transaction.id} className="border-b last:border-0">
                   <td className="px-2 py-1.5 whitespace-nowrap tabular-nums">{transaction.date}</td>
-                  <td className="px-2 py-1.5">{transaction.payee}</td>
                   <td className="px-2 py-1.5">
-                    {transaction.categoryName ?? (
-                      <span className="font-medium text-warning">Uncategorized</span>
-                    )}
+                    {transaction.transferAccountName
+                      ? `Transfer: ${transaction.transferAccountName}`
+                      : transaction.payee}
+                  </td>
+                  <td className="px-2 py-1.5">
+                    {transaction.hasCategoryLine &&
+                      (transaction.categoryName ?? (
+                        <span className="font-medium text-warning">Uncategorized</span>
+                      ))}
                   </td>
                   <td className="px-2 py-1.5 text-muted-foreground">{transaction.memo}</td>
                   <td className="px-2 py-1.5 text-right">
@@ -91,7 +103,11 @@ export function TransactionRegister({ transactions }: { transactions: Transactio
                     <ConfirmDelete
                       triggerLabel="Delete"
                       title="Delete this transaction?"
-                      description="This can't be undone."
+                      description={
+                        transaction.transferAccountName
+                          ? `This also deletes the matching transaction in ${transaction.transferAccountName}. This can't be undone.`
+                          : "This can't be undone."
+                      }
                       onConfirm={() => deleteTransaction.mutate(transaction.id)}
                     />
                   </td>

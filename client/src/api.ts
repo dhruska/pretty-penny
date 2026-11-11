@@ -1,6 +1,9 @@
 export interface Account {
   id: number;
   name: string;
+  type: string;
+  onBudget: boolean;
+  closed: boolean;
   balanceCents: number;
 }
 
@@ -13,6 +16,9 @@ export interface Transaction {
   amountCents: number;
   categoryId: number | null;
   categoryName: string | null;
+  hasCategoryLine: boolean;
+  transferAccountId: number | null;
+  transferAccountName: string | null;
   runningBalanceCents: number;
 }
 
@@ -22,6 +28,7 @@ export interface TransactionInput {
   memo: string;
   amountCents: number;
   categoryId: number | null;
+  transferAccountId: number | null;
 }
 
 export interface Category {
@@ -77,9 +84,17 @@ async function request<T>(path: string, method = 'GET', body?: object): Promise<
 
 export const api = {
   listAccounts: () => request<Account[]>('/accounts'),
-  createAccount: (input: { name: string; startingBalanceCents: number; date: string }) =>
-    request<Account>('/accounts', 'POST', input),
-  renameAccount: (id: number, name: string) => request<void>(`/accounts/${id}`, 'PATCH', { name }),
+  createAccount: (input: {
+    name: string;
+    type: string;
+    startingBalanceCents: number;
+    date: string;
+  }) => request<Account>('/accounts', 'POST', input),
+  updateAccount: (id: number, changes: { name?: string; type?: string }) =>
+    request<void>(`/accounts/${id}`, 'PATCH', changes),
+  closeAccount: (id: number, date: string) =>
+    request<void>(`/accounts/${id}/close`, 'POST', { date }),
+  reopenAccount: (id: number) => request<void>(`/accounts/${id}/reopen`, 'POST'),
   deleteAccount: (id: number) => request<void>(`/accounts/${id}`, 'DELETE'),
   listTransactions: (accountId: number) =>
     request<Transaction[]>(`/accounts/${accountId}/transactions`),

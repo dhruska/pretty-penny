@@ -1,5 +1,6 @@
-import { and, asc, eq, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
+import { isBudgetType, type AccountType } from '../account-types.js';
 import type { Db } from '../db/client.js';
 import {
   accounts,
@@ -10,6 +11,8 @@ import {
 } from '../db/schema.js';
 import {
   accountName,
+  accountType,
+  BALANCE_ADJUSTMENT_PAYEE,
   date,
   idParams,
   startingBalanceCents,
@@ -17,22 +20,61 @@ import {
   type IdParams,
 } from './schemas.js';
 
+type Executor = Db | Parameters<Parameters<Db['transaction']>[0]>[0];
+
 interface CreateAccountBody {
   name: string;
+  type?: AccountType;
   startingBalanceCents: number;
   date: string;
 }
 
-interface RenameAccountBody {
-  name: string;
+interface UpdateAccountBody {
+  name?: string;
+  type?: AccountType;
+}
+
+const accountColumns = {
+  id: accounts.id,
+  name: accounts.name,
+  type: accounts.type,
+  onBudget: accounts.onBudget,
+  closed: sql<boolean>`${accounts.closedAt} is not null`,
+};
+
+/** Records a balance-changing transaction, categorized to Ready to Assign for budget accounts. */
+async function addBalanceTransaction(
+  tx: Executor,
+  account: { id: number; onBudget: boolean },
+  values: { date: string; payee: string; amountCents: number; isStartingBalance: boolean },
+) {
+  const [created] = await tx
+    .insert(transactions)
+    .values({ accountId: account.id, ...values })
+    .returning({ id: transactions.id });
+  if (!account.onBudget) return;
+
+  const [readyToAssign] = await tx
+    .select({ id: categories.id })
+    .from(categories)
+    .where(eq(categories.systemKey, READY_TO_ASSIGN_KEY));
+  await tx.insert(transactionLines).values({
+    transactionId: created!.id,
+    categoryId: readyToAssign!.id,
+    amountCents: values.amountCents,
+  });
 }
 
 export function registerAccountRoutes(app: FastifyInstance, db: Db) {
+  async function findAccount(id: number) {
+    const [account] = await db.select(accountColumns).from(accounts).where(eq(accounts.id, id));
+    return account;
+  }
+
   app.get('/api/accounts', async () => {
     return db
       .select({
-        id: accounts.id,
-        name: accounts.name,
+        ...accountColumns,
         balanceCents: sql<number>`coalesce(sum(${transactions.amountCents}), 0)`.mapWith(Number),
       })
       .from(accounts)
@@ -49,37 +91,25 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db) {
           type: 'object',
           additionalProperties: false,
           required: ['name', 'startingBalanceCents', 'date'],
-          properties: { name: accountName, startingBalanceCents, date },
+          properties: { name: accountName, type: accountType, startingBalanceCents, date },
         },
       },
     },
     async (request, reply) => {
       const { startingBalanceCents: balanceCents, date: startingDate } = request.body;
-      const name = request.body.name.trim();
+      const type = request.body.type ?? 'checking';
 
       const account = await db.transaction(async (tx) => {
         const [created] = await tx
           .insert(accounts)
-          .values({ name })
-          .returning({ id: accounts.id, name: accounts.name });
+          .values({ name: request.body.name.trim(), type, onBudget: isBudgetType(type) })
+          .returning(accountColumns);
         if (balanceCents !== 0) {
-          const [readyToAssign] = await tx
-            .select({ id: categories.id })
-            .from(categories)
-            .where(eq(categories.systemKey, READY_TO_ASSIGN_KEY));
-          const [starting] = await tx
-            .insert(transactions)
-            .values({
-              accountId: created!.id,
-              date: startingDate,
-              payee: STARTING_BALANCE_PAYEE,
-              amountCents: balanceCents,
-            })
-            .returning({ id: transactions.id });
-          await tx.insert(transactionLines).values({
-            transactionId: starting!.id,
-            categoryId: readyToAssign!.id,
+          await addBalanceTransaction(tx, created!, {
+            date: startingDate,
+            payee: STARTING_BALANCE_PAYEE,
             amountCents: balanceCents,
+            isStartingBalance: true,
           });
         }
         return created!;
@@ -89,7 +119,7 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db) {
     },
   );
 
-  app.patch<{ Params: IdParams; Body: RenameAccountBody }>(
+  app.patch<{ Params: IdParams; Body: UpdateAccountBody }>(
     '/api/accounts/:id',
     {
       schema: {
@@ -97,20 +127,93 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db) {
         body: {
           type: 'object',
           additionalProperties: false,
-          required: ['name'],
-          properties: { name: accountName },
+          minProperties: 1,
+          properties: { name: accountName, type: accountType },
         },
       },
     },
     async (request, reply) => {
+      const { name, type } = request.body;
+      if (name === undefined && type === undefined) {
+        return reply.code(400).send({ message: 'Nothing to update' });
+      }
+
+      const account = await findAccount(request.params.id);
+      if (!account) return reply.code(404).send({ message: 'Account not found' });
+      if (type !== undefined && isBudgetType(type) !== account.onBudget) {
+        return reply.code(400).send({
+          message: account.onBudget
+            ? 'A budget account can only change to another budget account type.'
+            : 'A tracking account can only change to another tracking account type.',
+        });
+      }
+
       const [updated] = await db
         .update(accounts)
-        .set({ name: request.body.name.trim() })
-        .where(eq(accounts.id, request.params.id))
-        .returning({ id: accounts.id, name: accounts.name });
-
-      if (!updated) return reply.code(404).send({ message: 'Account not found' });
+        .set({ name: name?.trim(), type })
+        .where(eq(accounts.id, account.id))
+        .returning(accountColumns);
       return updated;
+    },
+  );
+
+  app.post<{ Params: IdParams; Body: { date: string } }>(
+    '/api/accounts/:id/close',
+    {
+      schema: {
+        params: idParams,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['date'],
+          properties: { date },
+        },
+      },
+    },
+    async (request, reply) => {
+      const account = await findAccount(request.params.id);
+      if (!account) return reply.code(404).send({ message: 'Account not found' });
+      if (account.closed)
+        return reply.code(409).send({ message: 'This account is already closed.' });
+
+      await db.transaction(async (tx) => {
+        const [row] = await tx
+          .select({
+            balanceCents: sql<number>`coalesce(sum(${transactions.amountCents}), 0)`.mapWith(
+              Number,
+            ),
+          })
+          .from(transactions)
+          .where(eq(transactions.accountId, account.id));
+        const balanceCents = row?.balanceCents ?? 0;
+
+        // As in YNAB, closing zeroes any remaining balance with an adjustment.
+        if (balanceCents !== 0) {
+          await addBalanceTransaction(tx, account, {
+            date: request.body.date,
+            payee: BALANCE_ADJUSTMENT_PAYEE,
+            amountCents: -balanceCents,
+            isStartingBalance: false,
+          });
+        }
+        await tx.update(accounts).set({ closedAt: new Date() }).where(eq(accounts.id, account.id));
+      });
+
+      return reply.code(204).send();
+    },
+  );
+
+  app.post<{ Params: IdParams }>(
+    '/api/accounts/:id/reopen',
+    { schema: { params: idParams } },
+    async (request, reply) => {
+      const [updated] = await db
+        .update(accounts)
+        .set({ closedAt: null })
+        .where(eq(accounts.id, request.params.id))
+        .returning({ id: accounts.id });
+      if (!updated) return reply.code(404).send({ message: 'Account not found' });
+      return reply.code(204).send();
     },
   );
 
@@ -123,7 +226,7 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db) {
       const [recorded] = await db
         .select({ id: transactions.id })
         .from(transactions)
-        .where(and(eq(transactions.accountId, id), ne(transactions.payee, STARTING_BALANCE_PAYEE)))
+        .where(and(eq(transactions.accountId, id), eq(transactions.isStartingBalance, false)))
         .limit(1);
       if (recorded) {
         return reply
