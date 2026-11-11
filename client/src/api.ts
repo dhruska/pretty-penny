@@ -24,6 +24,8 @@ export interface Transaction {
   hasCategoryLine: boolean;
   transferAccountId: number | null;
   transferAccountName: string | null;
+  /** One line normally, or several for a split. */
+  lines: TransactionLine[];
   /** Only in a single account's register. */
   runningBalanceCents?: number;
 }
@@ -39,12 +41,27 @@ export interface SearchResults {
   hasMore: boolean;
 }
 
+export interface TransactionLine {
+  categoryId: number | null;
+  categoryName: string | null;
+  amountCents: number;
+  memo: string;
+}
+
+export interface LineInput {
+  categoryId: number | null;
+  amountCents: number;
+  memo: string;
+}
+
+/** Either `categoryId` or, for a split, `lines`. */
 export interface TransactionInput {
   date: string;
   payee: string;
   memo: string;
   amountCents: number;
-  categoryId: number | null;
+  categoryId?: number | null;
+  lines?: LineInput[];
   transferAccountId: number | null;
 }
 

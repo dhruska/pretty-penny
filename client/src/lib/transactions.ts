@@ -19,5 +19,7 @@ export function matchesFilter(transaction: Transaction, filter: string): boolean
     transaction.categoryName ?? '',
     transaction.memo,
     formatCents(Math.abs(transaction.amountCents)),
+    // A split also matches on any of its lines.
+    ...transaction.lines.flatMap((line) => [line.categoryName ?? '', line.memo]),
   ].some((value) => value.toLowerCase().includes(text));
 }

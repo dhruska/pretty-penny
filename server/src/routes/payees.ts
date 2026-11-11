@@ -30,7 +30,14 @@ export function registerPayeeRoutes(app: FastifyInstance, db: Db) {
         .select({ payeeId: transactions.payeeId, categoryId: transactionLines.categoryId })
         .from(transactions)
         .innerJoin(transactionLines, eq(transactionLines.transactionId, transactions.id))
-        .where(and(isNotNull(transactions.payeeId), isNotNull(transactionLines.categoryId)))
+        .where(
+          and(
+            isNotNull(transactions.payeeId),
+            isNotNull(transactionLines.categoryId),
+            // Split transactions have no single category, so they don't count.
+            sql`(select count(*) from transaction_lines l where l.transaction_id = ${transactions.id}) = 1`,
+          ),
+        )
         .orderBy(asc(transactions.date), asc(transactions.createdAt), asc(transactions.id)),
     ]);
 

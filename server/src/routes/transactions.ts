@@ -1,17 +1,4 @@
-import {
-  and,
-  desc,
-  eq,
-  gte,
-  ilike,
-  inArray,
-  isNotNull,
-  isNull,
-  lte,
-  or,
-  sql,
-  type SQL,
-} from 'drizzle-orm';
+import { and, desc, eq, gte, ilike, inArray, lte, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { FastifyInstance } from 'fastify';
 import type { Db, Executor } from '../db/client.js';
@@ -30,12 +17,19 @@ import {
 
 type Cleared = 'uncleared' | 'cleared';
 
+interface LineInput {
+  categoryId: number | null;
+  amountCents: number;
+  memo?: string;
+}
+
 interface TransactionBody {
   date: string;
   payee?: string;
   memo?: string;
   amountCents: number;
   categoryId?: number | null;
+  lines?: LineInput[];
   transferAccountId?: number | null;
   cleared?: Cleared;
 }
@@ -56,7 +50,15 @@ interface AccountInfo {
   closed: boolean;
 }
 
+interface LineRow {
+  categoryId: number | null;
+  categoryName: string | null;
+  amountCents: number;
+  memo: string;
+}
+
 const SEARCH_LIMIT = 500;
+const MAX_SPLIT_LINES = 50;
 
 const nullableId = { ...categoryId, type: ['integer', 'null'] };
 const cleared = { type: 'string', enum: ['uncleared', 'cleared'] } as const;
@@ -67,6 +69,17 @@ const fields = {
   memo,
   amountCents,
   categoryId: nullableId,
+  lines: {
+    type: 'array',
+    minItems: 2,
+    maxItems: MAX_SPLIT_LINES,
+    items: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['categoryId', 'amountCents'],
+      properties: { categoryId: nullableId, amountCents, memo },
+    },
+  },
   transferAccountId: nullableId,
   cleared,
 };
@@ -74,8 +87,31 @@ const fields = {
 const pair = alias(transactions, 'pair');
 const pairAccount = alias(accounts, 'pair_account');
 
-// A transaction has at most one line until split transactions are added, held either by the
-// transaction itself or by the budget side of its transfer pair.
+// A transaction's lines belong either to it or, for a transfer between a budget and a tracking
+// account, to the budget side of the pair. Gathering them in a subquery keeps one row per
+// transaction, so running balances count each transaction once.
+const ownLines = sql`(l.transaction_id = ${transactions.id} or l.transaction_id = ${transactions.transferTransactionId})`;
+
+const linesColumn = sql<LineRow[]>`coalesce((
+  select json_agg(json_build_object(
+    'categoryId', l.category_id,
+    'categoryName', c.name,
+    'amountCents', l.amount_cents,
+    'memo', l.memo
+  ) order by l.id)
+  from transaction_lines l
+  left join categories c on c.id = l.category_id
+  where ${ownLines}
+), '[]'::json)`;
+
+/** Whether any of a transaction's lines meets a condition on `l` (line) or `c` (category). */
+const anyLine = (condition: SQL) =>
+  sql`exists (
+    select 1 from transaction_lines l
+    left join categories c on c.id = l.category_id
+    where ${ownLines} and ${condition}
+  )`;
+
 const listColumns = {
   id: transactions.id,
   accountId: transactions.accountId,
@@ -87,15 +123,8 @@ const listColumns = {
   cleared: transactions.cleared,
   transferAccountId: pair.accountId,
   transferAccountName: pairAccount.name,
-  hasCategoryLine: sql<boolean>`${transactionLines.id} is not null`,
-  categoryId: transactionLines.categoryId,
-  categoryName: categories.name,
+  lines: linesColumn,
 };
-
-const lineJoin = or(
-  eq(transactionLines.transactionId, transactions.id),
-  eq(transactionLines.transactionId, transactions.transferTransactionId),
-);
 
 const newestFirst = [
   desc(transactions.date),
@@ -103,8 +132,20 @@ const newestFirst = [
   desc(transactions.id),
 ] as const;
 
+/** Adds the single-category fields the client shows; a split's category is "Split". */
+function withCategory<T extends { lines: LineRow[] }>(row: T) {
+  const [first] = row.lines;
+  const isSplit = row.lines.length > 1;
+  return {
+    ...row,
+    hasCategoryLine: row.lines.length > 0,
+    categoryId: isSplit ? null : (first?.categoryId ?? null),
+    categoryName: isSplit ? 'Split' : (first?.categoryName ?? null),
+  };
+}
+
 /** Lists transactions with their account, payee, transfer and category details. */
-function findTransactions(db: Executor, where: SQL | undefined, limit?: number) {
+async function findTransactions(db: Executor, where: SQL | undefined, limit?: number) {
   const query = db
     .select(listColumns)
     .from(transactions)
@@ -112,12 +153,11 @@ function findTransactions(db: Executor, where: SQL | undefined, limit?: number) 
     .leftJoin(payees, eq(payees.id, transactions.payeeId))
     .leftJoin(pair, eq(pair.id, transactions.transferTransactionId))
     .leftJoin(pairAccount, eq(pairAccount.id, pair.accountId))
-    .leftJoin(transactionLines, lineJoin)
-    .leftJoin(categories, eq(transactionLines.categoryId, categories.id))
     .where(where)
     .orderBy(...newestFirst)
     .$dynamic();
-  return limit === undefined ? query : query.limit(limit);
+  const rows = await (limit === undefined ? query : query.limit(limit));
+  return rows.map(withCategory);
 }
 
 async function findTransaction(db: Executor, id: number) {
@@ -148,7 +188,7 @@ async function loadAccount(tx: Executor, id: number): Promise<AccountInfo | unde
 }
 
 /**
- * Which side of a transaction holds its category line. Only money entering or leaving the budget
+ * Which side of a transaction holds its category lines. Only money entering or leaving the budget
  * is categorized: regular budget transactions, and the budget side of a budget-tracking transfer.
  */
 function lineHolder(account: AccountInfo, other: AccountInfo | null): 'self' | 'pair' | null {
@@ -176,13 +216,25 @@ async function resolveTransferAccount(
   return other;
 }
 
-async function assertCategoryExists(tx: Executor, id: number | null) {
-  if (id === null) return;
-  const [category] = await tx
+async function assertCategoriesExist(tx: Executor, ids: (number | null)[]) {
+  const wanted = [...new Set(ids.filter((id): id is number => id !== null))];
+  if (wanted.length === 0) return;
+  const found = await tx
     .select({ id: categories.id })
     .from(categories)
-    .where(eq(categories.id, id));
-  if (!category) throw new HttpError(400, 'Category not found');
+    .where(inArray(categories.id, wanted));
+  if (found.length !== wanted.length) throw new HttpError(400, 'Category not found');
+}
+
+/** Checks split lines against the transaction they belong to. */
+function assertValidSplit(lines: LineInput[], amount: number, holder: 'self' | 'pair' | null) {
+  if (holder !== 'self') {
+    throw new HttpError(400, 'Only regular transactions in budget accounts can be split.');
+  }
+  const total = lines.reduce((sum, line) => sum + line.amountCents, 0);
+  if (total !== amount) {
+    throw new HttpError(400, 'The split lines must add up to the transaction amount.');
+  }
 }
 
 /** Replaces the category lines for a transaction and its transfer pair. */
@@ -190,18 +242,21 @@ async function writeLines(
   tx: Executor,
   ids: { self: number; pair: number | null },
   holder: 'self' | 'pair' | null,
-  categoryIdValue: number | null,
-  amount: number,
+  lines: LineInput[],
 ) {
   const transactionIds = ids.pair === null ? [ids.self] : [ids.self, ids.pair];
   await tx.delete(transactionLines).where(inArray(transactionLines.transactionId, transactionIds));
   if (holder === null) return;
 
-  await tx.insert(transactionLines).values({
-    transactionId: holder === 'self' ? ids.self : ids.pair!,
-    categoryId: categoryIdValue,
-    amountCents: holder === 'self' ? amount : -amount,
-  });
+  await tx.insert(transactionLines).values(
+    lines.map((line) => ({
+      transactionId: holder === 'self' ? ids.self : ids.pair!,
+      categoryId: line.categoryId,
+      // The pair's amount is the opposite of this side's.
+      amountCents: holder === 'self' ? line.amountCents : -line.amountCents,
+      memo: line.memo?.trim() ?? '',
+    })),
+  );
 }
 
 async function createPair(
@@ -228,6 +283,12 @@ async function createPair(
   return created!.id;
 }
 
+function assertOneCategoryChoice(body: Partial<TransactionBody>) {
+  if (body.lines !== undefined && body.categoryId !== undefined) {
+    throw new HttpError(400, 'Send either a category or split lines, not both.');
+  }
+}
+
 export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
   app.get<{ Params: IdParams }>(
     '/api/accounts/:id/transactions',
@@ -238,7 +299,7 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
         return reply.code(404).send({ message: 'Account not found' });
       }
 
-      return db
+      const rows = await db
         .select({
           ...listColumns,
           runningBalanceCents: sql<number>`sum(${transactions.amountCents}) over (
@@ -250,10 +311,9 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
         .leftJoin(payees, eq(payees.id, transactions.payeeId))
         .leftJoin(pair, eq(pair.id, transactions.transferTransactionId))
         .leftJoin(pairAccount, eq(pairAccount.id, pair.accountId))
-        .leftJoin(transactionLines, lineJoin)
-        .leftJoin(categories, eq(transactionLines.categoryId, categories.id))
         .where(eq(transactions.accountId, id))
         .orderBy(...newestFirst);
+      return rows.map(withCategory);
     },
   );
 
@@ -285,18 +345,18 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
         conditions.push(
           or(
             ilike(payees.name, pattern),
-            ilike(categories.name, pattern),
             ilike(transactions.memo, pattern),
             ilike(accounts.name, pattern),
             ilike(pairAccount.name, pattern),
+            anyLine(sql`(c.name ilike ${pattern} or l.memo ilike ${pattern})`),
           ),
         );
       }
       if (accountId !== undefined) conditions.push(eq(transactions.accountId, accountId));
       if (category === 'uncategorized') {
-        conditions.push(and(isNotNull(transactionLines.id), isNull(transactionLines.categoryId)));
+        conditions.push(anyLine(sql`l.category_id is null`));
       } else if (category !== undefined) {
-        conditions.push(eq(transactionLines.categoryId, Number(category)));
+        conditions.push(anyLine(sql`l.category_id = ${Number(category)}`));
       }
       if (from) conditions.push(gte(transactions.date, from));
       if (to) conditions.push(lte(transactions.date, to));
@@ -322,6 +382,7 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
     },
     async (request, reply) => {
       const { body } = request;
+      assertOneCategoryChoice(body);
 
       const created = await db.transaction(async (tx) => {
         const account = await loadAccount(tx, request.params.id);
@@ -335,11 +396,22 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
           null,
         );
         const holder = lineHolder(account, other);
-        const categoryIdValue = body.categoryId ?? null;
-        if (categoryIdValue !== null && holder === null) {
-          throw new HttpError(400, NO_CATEGORY_MESSAGE);
+
+        let lines: LineInput[];
+        if (body.lines) {
+          assertValidSplit(body.lines, body.amountCents, holder);
+          lines = body.lines;
+        } else {
+          const categoryIdValue = body.categoryId ?? null;
+          if (categoryIdValue !== null && holder === null) {
+            throw new HttpError(400, NO_CATEGORY_MESSAGE);
+          }
+          lines = [{ categoryId: categoryIdValue, amountCents: body.amountCents }];
         }
-        await assertCategoryExists(tx, categoryIdValue);
+        await assertCategoriesExist(
+          tx,
+          lines.map((line) => line.categoryId),
+        );
 
         const memoValue = body.memo?.trim() ?? '';
         const [row] = await tx
@@ -361,13 +433,7 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
               amountCents: body.amountCents,
             })
           : null;
-        await writeLines(
-          tx,
-          { self: row!.id, pair: pairId },
-          holder,
-          categoryIdValue,
-          body.amountCents,
-        );
+        await writeLines(tx, { self: row!.id, pair: pairId }, holder, lines);
         return findTransaction(tx, row!.id);
       });
 
@@ -386,6 +452,7 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
     async (request) => {
       const { id } = request.params;
       const { body } = request;
+      assertOneCategoryChoice(body);
 
       return db.transaction(async (tx) => {
         const [current] = await tx
@@ -416,28 +483,51 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
           body.transferAccountId === undefined ? currentOtherId : body.transferAccountId,
           currentOtherId,
         );
-
         const holder = lineHolder(account, other);
-        if (body.categoryId != null && holder === null) {
-          throw new HttpError(400, NO_CATEGORY_MESSAGE);
-        }
-        const [currentLine] = await tx
-          .select({ categoryId: transactionLines.categoryId })
+
+        const currentLines = await tx
+          .select({
+            categoryId: transactionLines.categoryId,
+            amountCents: transactionLines.amountCents,
+            memo: transactionLines.memo,
+          })
           .from(transactionLines)
           .where(inArray(transactionLines.transactionId, currentPair ? [id, currentPair.id] : [id]))
-          .limit(1);
-        const categoryIdValue =
-          holder === null
-            ? null
-            : body.categoryId === undefined
-              ? (currentLine?.categoryId ?? null)
-              : body.categoryId;
-        await assertCategoryExists(tx, categoryIdValue);
+          .orderBy(transactionLines.id);
+        const wasSplit = currentLines.length > 1;
+        const amount = body.amountCents ?? current.amountCents;
+
+        let lines: LineInput[];
+        if (body.lines) {
+          assertValidSplit(body.lines, amount, holder);
+          lines = body.lines;
+        } else if (body.categoryId !== undefined) {
+          if (body.categoryId !== null && holder === null) {
+            throw new HttpError(400, NO_CATEGORY_MESSAGE);
+          }
+          lines = [{ categoryId: body.categoryId, amountCents: amount }];
+        } else if (wasSplit && holder === 'self') {
+          if (amount !== current.amountCents) {
+            throw new HttpError(
+              400,
+              'Update the split lines too, so they add up to the new amount.',
+            );
+          }
+          lines = currentLines;
+        } else {
+          // A split that becomes a transfer keeps no categories, as only one line can remain.
+          const keptCategory = wasSplit ? null : (currentLines[0]?.categoryId ?? null);
+          lines = [{ categoryId: holder === null ? null : keptCategory, amountCents: amount }];
+        }
+        await assertCategoriesExist(
+          tx,
+          lines.map((line) => line.categoryId),
+        );
 
         const values = {
           date: body.date ?? current.date,
           memo: body.memo?.trim() ?? current.memo,
-          amountCents: body.amountCents ?? current.amountCents,
+          amountCents: amount,
           cleared: body.cleared ?? current.cleared,
           payeeId: other
             ? null
@@ -469,13 +559,7 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
           pairId = await createPair(tx, id, other, values);
         }
 
-        await writeLines(
-          tx,
-          { self: id, pair: pairId },
-          holder,
-          categoryIdValue,
-          values.amountCents,
-        );
+        await writeLines(tx, { self: id, pair: pairId }, holder, lines);
         return findTransaction(tx, id);
       });
     },

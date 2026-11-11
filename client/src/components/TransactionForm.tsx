@@ -1,12 +1,19 @@
-import { api, type Account, type Transaction, type TransactionInput } from '@/api';
+import { api, type Account, type LineInput, type Transaction, type TransactionInput } from '@/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { today } from '@/lib/dates';
-import { amountFromFields, centsToInput } from '@/lib/money';
+import { amountFromFields, centsToInput, formatCents } from '@/lib/money';
 import { useQuery } from '@tanstack/react-query';
 import { useId, useState, type ComponentProps, type FormEvent } from 'react';
 import { CategorySelect, SELECT_CLASS } from './CategorySelect';
+import {
+  amountToFields,
+  lineCents,
+  newLineKey,
+  SplitLinesEditor,
+  type SplitLineFields,
+} from './SplitLinesEditor';
 
 interface TransactionFormProps {
   label: string;
@@ -42,6 +49,16 @@ export function TransactionForm({
   const [inflow, setInflow] = useState(amount > 0 ? centsToInput(amount) : '');
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [splitLines, setSplitLines] = useState<SplitLineFields[] | null>(() =>
+    transaction && transaction.lines.length > 1
+      ? transaction.lines.map((line) => ({
+          key: newLineKey(),
+          categoryId: line.categoryId,
+          memo: line.memo,
+          ...amountToFields(line.amountCents),
+        }))
+      : null,
+  );
 
   // A closed account stays listed only if this transaction already transfers to it.
   const transferOptions = (accounts.data ?? []).filter(
@@ -54,10 +71,56 @@ export function TransactionForm({
   const usesCategory = isTransfer
     ? transferAccount !== undefined && transferAccount.onBudget !== account.onBudget
     : account.onBudget;
+  // As in YNAB, only regular transactions in budget accounts can be split.
+  const canSplit = !isTransfer && account.onBudget;
+  const isSplit = canSplit && splitLines !== null;
+  const total = amountFromFields(outflow, inflow);
+  const totalCents = total.error === undefined ? total.cents : null;
+
+  function startSplit() {
+    setSplitLines([
+      {
+        key: newLineKey(),
+        categoryId,
+        memo: '',
+        ...amountToFields(totalCents ?? 0),
+      },
+      { key: newLineKey(), categoryId: null, memo: '', outflow: '', inflow: '' },
+    ]);
+  }
+
+  function useOneCategory() {
+    setCategoryId(splitLines?.[0]?.categoryId ?? null);
+    setSplitLines(null);
+  }
+
+  /** The split lines to send, or an error message if they aren't ready. */
+  function splitInput(amount: number): LineInput[] | string {
+    const amounts = splitLines!.map(lineCents);
+    const invalid = amounts.findIndex((cents) => cents === null);
+    if (invalid !== -1) {
+      const line = splitLines![invalid]!;
+      return `Line ${invalid + 1}: ${amountFromFields(line.outflow, line.inflow).error}`;
+    }
+
+    const remaining = amount - amounts.reduce<number>((sum, cents) => sum + cents!, 0);
+    if (remaining !== 0) {
+      return `${formatCents(remaining)} is left to assign. Add it to a line or use Spread remaining.`;
+    }
+
+    // Lines left blank are dropped rather than saved as zero.
+    const lines = splitLines!.flatMap((line, index) =>
+      amounts[index] === 0
+        ? []
+        : [{ categoryId: line.categoryId, memo: line.memo, amountCents: amounts[index]! }],
+    );
+    if (lines.length < 2) return 'A split needs at least two lines with amounts.';
+    return lines;
+  }
 
   function choosePayee(value: string) {
     setPayee(value);
-    if (categoryChosen) return;
+    if (categoryChosen || isSplit) return;
     const match = payees.data?.find(
       (option) => option.name.toLowerCase() === value.trim().toLowerCase(),
     );
@@ -81,6 +144,11 @@ export function TransactionForm({
       setError('Enter a date.');
       return;
     }
+    const lines = isSplit ? splitInput(result.cents) : undefined;
+    if (typeof lines === 'string') {
+      setError(lines);
+      return;
+    }
 
     setError(null);
     setIsSaving(true);
@@ -89,7 +157,7 @@ export function TransactionForm({
         date,
         payee: isTransfer ? '' : payee,
         memo,
-        categoryId: usesCategory ? categoryId : null,
+        ...(lines ? { lines } : { categoryId: usesCategory ? categoryId : null }),
         transferAccountId,
         amountCents: result.cents,
       });
@@ -98,6 +166,7 @@ export function TransactionForm({
         setPayee('');
         setCategoryId(null);
         setCategoryChosen(false);
+        setSplitLines(null);
         setMemo('');
         setOutflow('');
         setInflow('');
@@ -173,8 +242,23 @@ export function TransactionForm({
           ))}
         </datalist>
         <div className="min-w-0 space-y-1">
-          <Label htmlFor={`${id}-category`}>Category</Label>
-          {usesCategory ? (
+          <div className="flex items-baseline justify-between gap-2">
+            <Label htmlFor={`${id}-category`}>Category</Label>
+            {canSplit && (
+              <button
+                type="button"
+                className="cursor-pointer text-xs whitespace-nowrap text-primary underline-offset-2 hover:underline"
+                onClick={isSplit ? useOneCategory : startSplit}
+              >
+                {isSplit ? 'Use one category' : 'Split'}
+              </button>
+            )}
+          </div>
+          {isSplit ? (
+            <select id={`${id}-category`} className={SELECT_CLASS} disabled>
+              <option>Split ({splitLines!.length} lines)</option>
+            </select>
+          ) : usesCategory ? (
             <CategorySelect id={`${id}-category`} value={categoryId} onChange={chooseCategory} />
           ) : (
             <select id={`${id}-category`} className={SELECT_CLASS} disabled>
@@ -188,6 +272,9 @@ export function TransactionForm({
         {textField('Outflow', outflow, setOutflow, { inputMode: 'decimal' })}
         {textField('Inflow', inflow, setInflow, { inputMode: 'decimal' })}
       </div>
+      {isSplit && (
+        <SplitLinesEditor lines={splitLines!} totalCents={totalCents} onChange={setSplitLines} />
+      )}
       {error && <p className="text-sm text-negative">{error}</p>}
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={isSaving}>

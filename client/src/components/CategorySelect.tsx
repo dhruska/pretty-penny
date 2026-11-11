@@ -5,17 +5,25 @@ interface CategorySelectProps {
   id: string;
   value: number | null;
   onChange: (value: number | null) => void;
+  /** Needed when there's no visible label pointing at `id`. */
+  'aria-label'?: string;
 }
 
 export const SELECT_CLASS =
   'h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50';
 
-export function CategorySelect({ id, value, onChange }: CategorySelectProps) {
+export function CategorySelect({
+  id,
+  value,
+  onChange,
+  'aria-label': ariaLabel,
+}: CategorySelectProps) {
   const { data } = useQuery({ queryKey: ['categories'], queryFn: api.listCategories });
 
   return (
     <select
       id={id}
+      aria-label={ariaLabel}
       className={SELECT_CLASS}
       value={value ?? ''}
       onChange={(event) => onChange(event.target.value === '' ? null : Number(event.target.value))}

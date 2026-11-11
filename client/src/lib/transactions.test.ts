@@ -16,6 +16,7 @@ const base: Transaction = {
   hasCategoryLine: true,
   transferAccountId: null,
   transferAccountName: null,
+  lines: [{ categoryId: 5, categoryName: 'Groceries', amountCents: -1_234_56, memo: '' }],
 };
 
 describe('payeeLabel', () => {
@@ -37,6 +38,20 @@ describe('matchesFilter', () => {
 
   it('matches a transfer by the other account', () => {
     expect(matchesFilter({ ...base, transferAccountName: 'Savings' }, 'savings')).toBe(true);
+  });
+
+  it('matches a split by any line’s category or memo', () => {
+    const split: Transaction = {
+      ...base,
+      categoryName: 'Split',
+      lines: [
+        { categoryId: 5, categoryName: 'Groceries', amountCents: -1_000_00, memo: '' },
+        { categoryId: 6, categoryName: 'Household', amountCents: -234_56, memo: 'light bulbs' },
+      ],
+    };
+
+    expect(matchesFilter(split, 'household')).toBe(true);
+    expect(matchesFilter(split, 'bulbs')).toBe(true);
   });
 
   it('rejects text that appears nowhere', () => {
