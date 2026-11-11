@@ -21,6 +21,8 @@
   --destructive: var(--negative);
   --input: var(--border);
   --ring: var(--primary);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
   --radius: 0.5rem;
 }
 
@@ -45,6 +47,8 @@
   --color-destructive: var(--destructive);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --radius-sm: calc(var(--radius) - 2px);
   --radius-md: var(--radius);
   --radius-lg: calc(var(--radius) + 2px);

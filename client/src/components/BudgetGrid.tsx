@@ -1,8 +1,8 @@
 import type { Budget, BudgetCategory } from '@/api';
 import { Input } from '@/components/ui/input';
 import { centsToInput, parseDollars } from '@/lib/money';
-import { cn } from 'cn';
 import { useState } from 'react';
+import { AvailableButton } from './CategoryMoney';
 import { Money } from './Money';
 
 interface BudgetGridProps {
@@ -57,20 +57,6 @@ function AssignedInput({
       onKeyDown={(event) => {
         if (event.key === 'Enter') event.currentTarget.blur();
       }}
-    />
-  );
-}
-
-function Available({ cents }: { cents: number }) {
-  return (
-    <Money
-      cents={cents}
-      className={cn(
-        'inline-block rounded-full px-2 py-0.5',
-        cents > 0 && 'bg-positive/10 text-positive',
-        cents === 0 && 'text-muted-foreground',
-        cents < 0 && 'bg-negative/10',
-      )}
     />
   );
 }
@@ -137,7 +123,7 @@ export function BudgetGrid({ budget, showHidden, onAssign }: BudgetGridProps) {
                   <Money cents={category.activityCents} className="text-foreground" />
                 </td>
                 <td className="px-3 py-1 text-right">
-                  <Available cents={category.availableCents} />
+                  <AvailableButton category={category} budget={budget} />
                 </td>
               </tr>
             ))}

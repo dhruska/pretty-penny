@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import type { Db } from '../db/client.js';
+import type { Db, Executor } from '../db/client.js';
 import {
   categories,
   categoryGroups,
@@ -54,7 +54,7 @@ function reorder(ids: number[], id: number, direction: Direction): number[] | nu
 
 const isUserCategory = (id: number) => and(eq(categories.id, id), isNull(categories.systemKey));
 
-export async function loadCategories(db: Db) {
+export async function loadCategories(db: Executor) {
   const [groupRows, categoryRows] = await Promise.all([
     db.select().from(categoryGroups).orderBy(asc(categoryGroups.sortOrder), asc(categoryGroups.id)),
     db.select().from(categories).orderBy(asc(categories.sortOrder), asc(categories.id)),

@@ -47,3 +47,4 @@ export const startingBalanceCents = {
   maximum: MAX_AMOUNT_CENTS,
 } as const;
 export const amountCents = { ...startingBalanceCents, not: { const: 0 } } as const;
+export const positiveCents = { ...startingBalanceCents, minimum: 1 } as const;

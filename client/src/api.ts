@@ -53,6 +53,15 @@ export interface BudgetCategory extends Category {
   assignedCents: number;
   activityCents: number;
   availableCents: number;
+  assignedLastMonthCents: number;
+  spentLastMonthCents: number;
+  averageAssignedCents: number;
+  averageSpentCents: number;
+}
+
+export interface AssignmentInput {
+  categoryId: number;
+  assignedCents: number;
 }
 
 export interface Budget {
@@ -107,6 +116,13 @@ export const api = {
     request<Budget>(`/budget?month=${month}&currentMonth=${currentMonth}`),
   setAssignment: (month: string, categoryId: number, assignedCents: number) =>
     request<void>(`/budget/${month}/categories/${categoryId}`, 'PUT', { assignedCents }),
+  /** Null means Ready to Assign. */
+  moveMoney: (
+    month: string,
+    move: { fromCategoryId: number | null; toCategoryId: number | null; amountCents: number },
+  ) => request<void>(`/budget/${month}/move`, 'POST', move),
+  setAssignments: (month: string, assignments: AssignmentInput[]) =>
+    request<void>(`/budget/${month}/assignments`, 'POST', { assignments }),
   listCategories: () => request<Categories>('/categories'),
   createGroup: (name: string) => request<void>('/category-groups', 'POST', { name }),
   updateGroup: (id: number, changes: CategoryChanges) =>

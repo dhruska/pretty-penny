@@ -1,4 +1,5 @@
 import { api, type Budget } from '@/api';
+import { AutoAssignMenu } from '@/components/AutoAssignMenu';
 import { BudgetGrid } from '@/components/BudgetGrid';
 import { CategoryManager } from '@/components/CategoryManager';
 import { Money } from '@/components/Money';
@@ -105,9 +106,12 @@ export function BudgetPage() {
       {budget.data && <UncategorizedNotice uncategorized={budget.data.uncategorized} />}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Button variant="secondary" size="sm" onClick={() => setIsManaging(!isManaging)}>
-          {isManaging ? 'Done' : 'Manage categories'}
-        </Button>
+        <div className="flex gap-2">
+          {!isManaging && budget.data && <AutoAssignMenu budget={budget.data} />}
+          <Button variant="secondary" size="sm" onClick={() => setIsManaging(!isManaging)}>
+            {isManaging ? 'Done' : 'Manage categories'}
+          </Button>
+        </div>
         {!isManaging && (
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             <input
