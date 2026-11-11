@@ -116,6 +116,38 @@ export interface ScheduledTransaction {
   transferAccountName: string | null;
 }
 
+export interface SpendingReport {
+  totalCents: number;
+  items: { label: string; spentCents: number }[];
+}
+
+export interface TrendsReport {
+  months: { month: string; spentCents: number }[];
+  averageCents: number;
+}
+
+export interface IncomeExpenseRow {
+  label: string;
+  byMonth: number[];
+  totalCents: number;
+}
+
+export interface IncomeExpenseReport {
+  months: string[];
+  income: IncomeExpenseRow[];
+  expenseGroups: (IncomeExpenseRow & { categories: IncomeExpenseRow[] })[];
+  incomeByMonth: number[];
+  expensesByMonth: number[];
+  netByMonth: number[];
+}
+
+export interface NetWorthPoint {
+  month: string;
+  assetsCents: number;
+  debtsCents: number;
+  netWorthCents: number;
+}
+
 /** The fields a transaction form can start from: a transaction, or a schedule's next occurrence. */
 export type TransactionDraft = Pick<
   Transaction,
@@ -228,6 +260,12 @@ export const api = {
   deleteScheduled: (id: number) => request<void>(`/scheduled/${id}`, 'DELETE'),
   enterScheduledNow: (id: number) => request<void>(`/scheduled/${id}/enter-now`, 'POST'),
   skipScheduled: (id: number) => request<void>(`/scheduled/${id}/skip`, 'POST'),
+  spendingReport: (range: URLSearchParams) => request<SpendingReport>(`/reports/spending?${range}`),
+  trendsReport: (range: URLSearchParams) => request<TrendsReport>(`/reports/trends?${range}`),
+  incomeExpenseReport: (range: URLSearchParams) =>
+    request<IncomeExpenseReport>(`/reports/income-expense?${range}`),
+  netWorthReport: (range: URLSearchParams) =>
+    request<NetWorthPoint[]>(`/reports/net-worth?${range}`),
   /** The delete dialog is the warning for reconciled transactions, so the UI always confirms. */
   deleteTransaction: (id: number) =>
     request<void>(`/transactions/${id}?confirmReconciled=true`, 'DELETE'),

@@ -30,7 +30,7 @@ interface AssignmentsBody {
 const nullableCategoryId = { ...categoryId, type: ['integer', 'null'] };
 const monthParams = { type: 'object', required: ['month'], properties: { month } } as const;
 
-async function loadBudgetFacts(db: Executor) {
+export async function loadBudgetFacts(db: Executor) {
   const lineMonth = sql<string>`to_char(${transactions.date}, 'YYYY-MM')`;
 
   const [{ readyToAssignId, groups }, assignmentRows, activityRows] = await Promise.all([
