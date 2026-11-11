@@ -1,4 +1,14 @@
-import { api, type Transaction, type TransactionInput } from '@/api';
+import { api, isReconciledError, type Transaction, type TransactionInput } from '@/api';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { payeeLabel } from '@/lib/transactions';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -17,6 +27,14 @@ interface TransactionRegisterProps {
   emptyMessage?: string;
 }
 
+function LockIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" className="size-3.5 fill-current">
+      <path d="M5 7V5a3 3 0 0 1 6 0v2h.5A1.5 1.5 0 0 1 13 8.5v5a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 3 13.5v-5A1.5 1.5 0 0 1 4.5 7H5Zm1.5 0h3V5a1.5 1.5 0 0 0-3 0v2Z" />
+    </svg>
+  );
+}
+
 function ClearedToggle({ transaction }: { transaction: Transaction }) {
   const queryClient = useQueryClient();
   const isCleared = transaction.cleared === 'cleared';
@@ -25,6 +43,20 @@ function ClearedToggle({ transaction }: { transaction: Transaction }) {
       api.updateTransaction(transaction.id, { cleared: isCleared ? 'uncleared' : 'cleared' }),
     onSuccess: () => queryClient.invalidateQueries(),
   });
+
+  // As in YNAB, reconciled transactions are locked and can't go back to cleared or uncleared.
+  if (transaction.cleared === 'reconciled') {
+    return (
+      <span
+        role="img"
+        aria-label="Reconciled"
+        title="Reconciled and locked"
+        className="inline-flex size-6 items-center justify-center text-positive"
+      >
+        <LockIcon />
+      </span>
+    );
+  }
 
   return (
     <button
@@ -75,8 +107,28 @@ export function TransactionRegister({
     onSuccess: () => queryClient.invalidateQueries(),
   });
 
+  // Resolves the open "Save anyway?" question for a reconciled transaction.
+  const [answerConfirm, setAnswerConfirm] = useState<((confirmed: boolean) => void) | null>(null);
+
+  function askToSaveAnyway() {
+    return new Promise<boolean>((resolve) => setAnswerConfirm(() => resolve));
+  }
+
+  function answer(confirmed: boolean) {
+    answerConfirm?.(confirmed);
+    setAnswerConfirm(null);
+  }
+
   async function saveEdit(id: number, input: TransactionInput) {
-    await api.updateTransaction(id, input);
+    try {
+      await api.updateTransaction(id, input);
+    } catch (error) {
+      if (!isReconciledError(error)) throw error;
+      if (!(await askToSaveAnyway())) {
+        throw new Error('Not saved. The reconciled transaction is unchanged.');
+      }
+      await api.updateTransaction(id, { ...input, confirmReconciled: true });
+    }
     await queryClient.invalidateQueries();
     setEditingId(null);
   }
@@ -87,6 +139,26 @@ export function TransactionRegister({
 
   return (
     <>
+      <AlertDialog
+        open={answerConfirm !== null}
+        onOpenChange={(open) => {
+          if (!open) answer(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>This transaction is reconciled</AlertDialogTitle>
+            <AlertDialogDescription>
+              It matched your bank when you reconciled this account. Changing its amount, date,
+              account or category can make the account stop matching.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => answer(true)}>Save anyway</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {deleteTransaction.isError && (
         <p className="mb-2 text-sm text-negative">{deleteTransaction.error.message}</p>
       )}
@@ -188,11 +260,15 @@ export function TransactionRegister({
                       <ConfirmDelete
                         triggerLabel="Delete"
                         title="Delete this transaction?"
-                        description={
-                          transaction.transferAccountName
-                            ? `This also deletes the matching transaction in ${transaction.transferAccountName}. This can't be undone.`
-                            : "This can't be undone."
-                        }
+                        description={[
+                          transaction.cleared === 'reconciled' &&
+                            'This transaction is reconciled, so the account may stop matching your bank.',
+                          transaction.transferAccountName &&
+                            `This also deletes the matching transaction in ${transaction.transferAccountName}.`,
+                          "This can't be undone.",
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
                         onConfirm={() => deleteTransaction.mutate(transaction.id)}
                       />
                     </td>

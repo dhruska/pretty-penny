@@ -2,16 +2,23 @@ import { ACCOUNT_TYPES } from '../account-types.js';
 
 export const STARTING_BALANCE_PAYEE = 'Starting Balance';
 export const BALANCE_ADJUSTMENT_PAYEE = 'Balance Adjustment';
+export const RECONCILIATION_ADJUSTMENT_PAYEE = 'Reconciliation Balance Adjustment';
 
-/** Errors thrown with a status code are sent to the client as that status and message. */
+/**
+ * Errors thrown with a status code are sent to the client as that status and message, plus an
+ * optional code the client can act on.
+ */
 export class HttpError extends Error {
   constructor(
     public statusCode: number,
     message: string,
+    public code?: string,
   ) {
     super(message);
   }
 }
+
+export const RECONCILED_CODE = 'RECONCILED';
 
 // $9,999,999,999.99. Sums of these stay well within JavaScript's safe integer range.
 const MAX_AMOUNT_CENTS = 999_999_999_999;

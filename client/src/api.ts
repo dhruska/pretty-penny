@@ -6,9 +6,26 @@ export interface Account {
   closed: boolean;
   balanceCents: number;
   clearedBalanceCents: number;
+  lastReconciledAt: string | null;
 }
 
-export type ClearedStatus = 'uncleared' | 'cleared';
+/** Reconciled transactions are locked; only reconciling an account sets that status. */
+export type ClearedStatus = 'uncleared' | 'cleared' | 'reconciled';
+
+/** An error from the API, with the code the server sends for errors the UI can act on. */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public code?: string,
+  ) {
+    super(message);
+  }
+}
+
+/** Whether an error means a reconciled transaction needs confirmation to change. */
+export const isReconciledError = (error: unknown) =>
+  error instanceof ApiError && error.code === 'RECONCILED';
 
 export interface Transaction {
   id: number;
@@ -118,8 +135,10 @@ async function request<T>(path: string, method = 'GET', body?: object): Promise<
   });
 
   if (!response.ok) {
-    const error: { message?: string } | null = await response.json().catch(() => null);
-    throw new Error(error?.message ?? 'Can’t reach the server.');
+    const error: { message?: string; code?: string } | null = await response
+      .json()
+      .catch(() => null);
+    throw new ApiError(error?.message ?? 'Can’t reach the server.', response.status, error?.code);
   }
 
   return response.status === 204 ? (undefined as T) : response.json();
@@ -138,17 +157,29 @@ export const api = {
   closeAccount: (id: number, date: string) =>
     request<void>(`/accounts/${id}/close`, 'POST', { date }),
   reopenAccount: (id: number) => request<void>(`/accounts/${id}/reopen`, 'POST'),
+  reconcileAccount: (id: number, bankBalanceCents: number, date: string) =>
+    request<{ adjustmentCents: number }>(`/accounts/${id}/reconcile`, 'POST', {
+      bankBalanceCents,
+      date,
+    }),
   deleteAccount: (id: number) => request<void>(`/accounts/${id}`, 'DELETE'),
   listTransactions: (accountId: number) =>
     request<Transaction[]>(`/accounts/${accountId}/transactions`),
   createTransaction: (accountId: number, input: TransactionInput) =>
     request<void>(`/accounts/${accountId}/transactions`, 'POST', input),
-  updateTransaction: (id: number, input: Partial<TransactionInput> & { cleared?: ClearedStatus }) =>
-    request<void>(`/transactions/${id}`, 'PATCH', input),
+  updateTransaction: (
+    id: number,
+    input: Partial<TransactionInput> & {
+      cleared?: Exclude<ClearedStatus, 'reconciled'>;
+      confirmReconciled?: boolean;
+    },
+  ) => request<void>(`/transactions/${id}`, 'PATCH', input),
   searchTransactions: (filters: URLSearchParams) =>
     request<SearchResults>(`/transactions?${filters}`),
   listPayees: () => request<Payee[]>('/payees'),
-  deleteTransaction: (id: number) => request<void>(`/transactions/${id}`, 'DELETE'),
+  /** The delete dialog is the warning for reconciled transactions, so the UI always confirms. */
+  deleteTransaction: (id: number) =>
+    request<void>(`/transactions/${id}?confirmReconciled=true`, 'DELETE'),
   getBudget: (month: string, currentMonth: string) =>
     request<Budget>(`/budget?month=${month}&currentMonth=${currentMonth}`),
   setAssignment: (month: string, categoryId: number, assignedCents: number) =>

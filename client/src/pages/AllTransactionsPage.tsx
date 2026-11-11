@@ -169,6 +169,7 @@ export function AllTransactionsPage() {
             <option value="">Any</option>
             <option value="cleared">Cleared</option>
             <option value="uncleared">Uncleared</option>
+            <option value="reconciled">Reconciled</option>
           </select>
         </Field>
         {datePreset === 'custom' && (

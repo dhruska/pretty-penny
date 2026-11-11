@@ -43,6 +43,13 @@
       "when": 1794370420096,
       "tag": "0005_drop_payee_text",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794372511437,
+      "tag": "0006_reconciliation",
+      "breakpoints": true
     }
   ]
 }

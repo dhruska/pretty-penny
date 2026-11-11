@@ -22,6 +22,7 @@ export const accounts = pgTable('accounts', {
   type: text().notNull().default('checking'),
   onBudget: boolean('on_budget').notNull().default(true),
   closedAt: timestamp('closed_at', { withTimezone: true }),
+  lastReconciledAt: timestamp('last_reconciled_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -44,7 +45,7 @@ export const transactions = pgTable(
     date: date({ mode: 'string' }).notNull(),
     // Transfers and transactions with a blank payee have none.
     payeeId: integer('payee_id').references(() => payees.id, { onDelete: 'set null' }),
-    // 'uncleared' or 'cleared'. Reconciliation will add 'reconciled'.
+    // 'uncleared', 'cleared' or 'reconciled'. Reconciled transactions are locked, as in YNAB.
     cleared: text().notNull().default('uncleared'),
     memo: text().notNull().default(''),
     // Negative for outflows. Limits in routes/schemas.ts keep this within JavaScript's safe range.

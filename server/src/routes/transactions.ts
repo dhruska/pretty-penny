@@ -12,6 +12,7 @@ import {
   idParams,
   memo,
   payee,
+  RECONCILED_CODE,
   type IdParams,
 } from './schemas.js';
 
@@ -32,6 +33,8 @@ interface TransactionBody {
   lines?: LineInput[];
   transferAccountId?: number | null;
   cleared?: Cleared;
+  /** Required to change a reconciled transaction in a way that affects the budget. */
+  confirmReconciled?: boolean;
 }
 
 interface SearchQuery {
@@ -40,7 +43,7 @@ interface SearchQuery {
   categoryId?: string;
   from?: string;
   to?: string;
-  cleared?: Cleared;
+  cleared?: Cleared | 'reconciled';
 }
 
 interface AccountInfo {
@@ -82,7 +85,11 @@ const fields = {
   },
   transferAccountId: nullableId,
   cleared,
+  confirmReconciled: { type: 'boolean' },
 };
+
+const RECONCILED_MESSAGE =
+  'This transaction is reconciled. Confirm to change its amount, date, account or category.';
 
 const pair = alias(transactions, 'pair');
 const pairAccount = alias(accounts, 'pair_account');
@@ -330,7 +337,7 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
             categoryId: { type: 'string', pattern: '^([0-9]{1,10}|uncategorized)$' },
             from: date,
             to: date,
-            cleared,
+            cleared: { type: 'string', enum: ['uncleared', 'cleared', 'reconciled'] },
           },
         },
       },
@@ -472,11 +479,21 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
         const account = (await loadAccount(tx, current.accountId))!;
         const [currentPair] = current.transferTransactionId
           ? await tx
-              .select({ id: transactions.id, accountId: transactions.accountId })
+              .select({
+                id: transactions.id,
+                accountId: transactions.accountId,
+                cleared: transactions.cleared,
+              })
               .from(transactions)
               .where(eq(transactions.id, current.transferTransactionId))
           : [];
         const currentOtherId = currentPair?.accountId ?? null;
+        if (current.cleared === 'reconciled' && body.cleared !== undefined) {
+          throw new HttpError(
+            400,
+            'A reconciled transaction can’t be marked cleared or uncleared.',
+          );
+        }
         const other = await resolveTransferAccount(
           tx,
           account,
@@ -524,6 +541,33 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
           lines.map((line) => line.categoryId),
         );
 
+        // As in YNAB, a reconciled transaction (or a reconciled transfer partner) can still be
+        // changed in ways that affect the budget, but only once the change is confirmed.
+        const isLocked = current.cleared === 'reconciled' || currentPair?.cleared === 'reconciled';
+        if (isLocked && body.confirmReconciled !== true) {
+          // Lines held by the pair are stored with the pair's amounts, and a transaction with no
+          // holder, such as a transfer between budget accounts, stores no lines at all.
+          const storedLines =
+            holder === null
+              ? []
+              : holder === 'pair'
+                ? lines.map((line) => ({ ...line, amountCents: -line.amountCents }))
+                : lines;
+          const sameLines =
+            storedLines.length === currentLines.length &&
+            storedLines.every(
+              (line, index) =>
+                line.categoryId === currentLines[index]!.categoryId &&
+                line.amountCents === currentLines[index]!.amountCents,
+            );
+          const affectsBudget =
+            amount !== current.amountCents ||
+            (body.date ?? current.date) !== current.date ||
+            (other?.id ?? null) !== currentOtherId ||
+            !sameLines;
+          if (affectsBudget) throw new HttpError(409, RECONCILED_MESSAGE, RECONCILED_CODE);
+        }
+
         const values = {
           date: body.date ?? current.date,
           memo: body.memo?.trim() ?? current.memo,
@@ -565,10 +609,33 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
     },
   );
 
-  app.delete<{ Params: IdParams }>(
+  app.delete<{ Params: IdParams; Querystring: { confirmReconciled?: boolean } }>(
     '/api/transactions/:id',
-    { schema: { params: idParams } },
+    {
+      schema: {
+        params: idParams,
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { confirmReconciled: { type: 'boolean' } },
+        },
+      },
+    },
     async (request, reply) => {
+      if (request.query.confirmReconciled !== true) {
+        const [locked] = await db
+          .select({ id: transactions.id })
+          .from(transactions)
+          .leftJoin(pair, eq(pair.id, transactions.transferTransactionId))
+          .where(
+            and(
+              eq(transactions.id, request.params.id),
+              or(eq(transactions.cleared, 'reconciled'), eq(pair.cleared, 'reconciled')),
+            ),
+          );
+        if (locked) throw new HttpError(409, RECONCILED_MESSAGE, RECONCILED_CODE);
+      }
+
       // Deleting one side of a transfer cascades to the other side.
       const deleted = await db
         .delete(transactions)

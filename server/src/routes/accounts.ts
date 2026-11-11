@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { isBudgetType, type AccountType } from '../account-types.js';
 import type { Db, Executor } from '../db/client.js';
@@ -15,6 +15,7 @@ import {
   BALANCE_ADJUSTMENT_PAYEE,
   date,
   idParams,
+  RECONCILIATION_ADJUSTMENT_PAYEE,
   startingBalanceCents,
   STARTING_BALANCE_PAYEE,
   type IdParams,
@@ -39,6 +40,7 @@ const accountColumns = {
   type: accounts.type,
   onBudget: accounts.onBudget,
   closed: sql<boolean>`${accounts.closedAt} is not null`,
+  lastReconciledAt: accounts.lastReconciledAt,
 };
 
 /** Records a balance-changing transaction, categorized to Ready to Assign for budget accounts. */
@@ -209,6 +211,63 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db) {
       });
 
       return reply.code(204).send();
+    },
+  );
+
+  app.post<{ Params: IdParams; Body: { bankBalanceCents: number; date: string } }>(
+    '/api/accounts/:id/reconcile',
+    {
+      schema: {
+        params: idParams,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['bankBalanceCents', 'date'],
+          properties: { bankBalanceCents: startingBalanceCents, date },
+        },
+      },
+    },
+    async (request, reply) => {
+      const account = await findAccount(request.params.id);
+      if (!account) return reply.code(404).send({ message: 'Account not found' });
+      if (account.closed) {
+        return reply.code(409).send({ message: 'Reopen this account before reconciling it.' });
+      }
+
+      const adjustmentCents = await db.transaction(async (tx) => {
+        const [row] = await tx
+          .select({
+            clearedCents: sql<number>`coalesce(sum(${transactions.amountCents}), 0)`.mapWith(
+              Number,
+            ),
+          })
+          .from(transactions)
+          .where(
+            and(eq(transactions.accountId, account.id), ne(transactions.cleared, 'uncleared')),
+          );
+        const difference = request.body.bankBalanceCents - (row?.clearedCents ?? 0);
+
+        // As in YNAB, any difference becomes an adjustment to the cleared balance.
+        if (difference !== 0) {
+          await addBalanceTransaction(tx, account, {
+            date: request.body.date,
+            payee: RECONCILIATION_ADJUSTMENT_PAYEE,
+            amountCents: difference,
+            isStartingBalance: false,
+          });
+        }
+        await tx
+          .update(transactions)
+          .set({ cleared: 'reconciled' })
+          .where(and(eq(transactions.accountId, account.id), eq(transactions.cleared, 'cleared')));
+        await tx
+          .update(accounts)
+          .set({ lastReconciledAt: new Date() })
+          .where(eq(accounts.id, account.id));
+        return difference;
+      });
+
+      return { adjustmentCents };
     },
   );
 

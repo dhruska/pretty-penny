@@ -2,6 +2,7 @@ import { api, type Account, type TransactionInput } from '@/api';
 import { AccountTypeSelect } from '@/components/AccountTypeSelect';
 import { ConfirmDelete } from '@/components/ConfirmDelete';
 import { Money } from '@/components/Money';
+import { ReconcileButton } from '@/components/ReconcileButton';
 import { TransactionForm } from '@/components/TransactionForm';
 import { TransactionRegister } from '@/components/TransactionRegister';
 import { Button } from '@/components/ui/button';
@@ -132,6 +133,11 @@ function AccountDetails({ account }: { account: Account }) {
                 <Money cents={account.balanceCents} className="text-lg font-medium" />
               </span>
             </section>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {account.lastReconciledAt
+                ? `Last reconciled ${new Date(account.lastReconciledAt).toLocaleDateString()}`
+                : 'Not reconciled yet'}
+            </p>
           </div>
         )}
         {!isRenaming && (
@@ -144,6 +150,7 @@ function AccountDetails({ account }: { account: Account }) {
               onBudget={account.onBudget}
               onChange={(type) => update.mutate({ type })}
             />
+            {!account.closed && <ReconcileButton account={account} />}
             <Button variant="ghost" size="sm" onClick={() => setIsRenaming(true)}>
               Rename
             </Button>
