@@ -22,7 +22,8 @@
     "db:migrate": "npm run db:migrate -w server",
     "db:migrate:test": "npm run db:migrate:test -w server",
     "pretest:unit": "npm run db:migrate:test",
-    "pretest:e2e": "npm run db:migrate:test"
+    "pretest:e2e": "npm run db:migrate:test",
+    "test:coverage": "npm run db:migrate:test && npm run test:coverage --workspaces"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

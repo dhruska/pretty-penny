@@ -1,6 +1,7 @@
 import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { autoAssignFigures, computeBudget, type BudgetFacts } from '../budget.js';
+import { upcomingByCategory } from '../scheduled.js';
 import type { Db, Executor } from '../db/client.js';
 import { accounts, monthlyAssignments, transactionLines, transactions } from '../db/schema.js';
 import { loadCategories } from './categories.js';
@@ -121,6 +122,7 @@ export function registerBudgetRoutes(app: FastifyInstance, db: Db) {
 
       const result = computeBudget(facts, request.query.month, request.query.currentMonth);
       const figures = autoAssignFigures(facts, request.query.month);
+      const upcoming = await upcomingByCategory(db, request.query.month);
 
       return {
         month: request.query.month,
@@ -132,6 +134,8 @@ export function registerBudgetRoutes(app: FastifyInstance, db: Db) {
             ...category,
             ...result.categories.get(category.id)!,
             ...figures.get(category.id)!,
+            // Scheduled money still to come this month, for Underfunded; negative for outflows.
+            upcomingCents: upcoming.get(category.id) ?? 0,
           })),
         })),
       };

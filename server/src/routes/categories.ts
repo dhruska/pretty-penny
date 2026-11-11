@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, or, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { Db, Executor } from '../db/client.js';
 import {
@@ -6,6 +6,7 @@ import {
   categoryGroups,
   monthlyAssignments,
   READY_TO_ASSIGN_KEY,
+  scheduledTransactions,
   transactionLines,
 } from '../db/schema.js';
 import { categoryId, categoryName, idParams, moveDirection, type IdParams } from './schemas.js';
@@ -322,6 +323,23 @@ export function registerCategoryRoutes(app: FastifyInstance, db: Db) {
       if (line || assignment) {
         return reply.code(409).send({
           message: 'This category has been used, so it can’t be deleted. Hide it instead.',
+        });
+      }
+
+      // Split lines in schedules are stored as JSON, so they need their own check.
+      const [scheduled] = await db
+        .select({ id: scheduledTransactions.id })
+        .from(scheduledTransactions)
+        .where(
+          or(
+            eq(scheduledTransactions.categoryId, id),
+            sql`${scheduledTransactions.lines} @> ${JSON.stringify([{ categoryId: id }])}::jsonb`,
+          ),
+        )
+        .limit(1);
+      if (scheduled) {
+        return reply.code(409).send({
+          message: 'A scheduled transaction uses this category. Change or delete it first.',
         });
       }
 

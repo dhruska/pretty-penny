@@ -5,6 +5,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -51,6 +52,11 @@ export const transactions = pgTable(
     // Negative for outflows. Limits in routes/schemas.ts keep this within JavaScript's safe range.
     amountCents: bigint('amount_cents', { mode: 'number' }).notNull(),
     isStartingBalance: boolean('is_starting_balance').notNull().default(false),
+    // The schedule this transaction was posted from, if any.
+    scheduledTransactionId: integer('scheduled_transaction_id').references(
+      (): AnyPgColumn => scheduledTransactions.id,
+      { onDelete: 'set null' },
+    ),
     // Both sides of a transfer point at each other, and deleting either side deletes both.
     transferTransactionId: integer('transfer_transaction_id').references(
       (): AnyPgColumn => transactions.id,
@@ -97,6 +103,38 @@ export const transactionLines = pgTable(
     index('transaction_lines_transaction_idx').on(table.transactionId),
     index('transaction_lines_category_idx').on(table.categoryId),
   ],
+);
+
+export interface ScheduledLine {
+  categoryId: number | null;
+  amountCents: number;
+  memo?: string;
+}
+
+export const scheduledTransactions = pgTable(
+  'scheduled_transactions',
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    accountId: integer('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    // One of FREQUENCIES in schedule.ts. Occurrences are counted from the first date.
+    frequency: text().notNull(),
+    firstDate: date('first_date', { mode: 'string' }).notNull(),
+    nextIndex: integer('next_index').notNull().default(0),
+    nextDate: date('next_date', { mode: 'string' }).notNull(),
+    payeeId: integer('payee_id').references(() => payees.id, { onDelete: 'set null' }),
+    memo: text().notNull().default(''),
+    amountCents: bigint('amount_cents', { mode: 'number' }).notNull(),
+    categoryId: integer('category_id').references(() => categories.id, { onDelete: 'restrict' }),
+    // Split lines, if the scheduled transaction is a split; otherwise null.
+    lines: jsonb().$type<ScheduledLine[]>(),
+    transferAccountId: integer('transfer_account_id').references(() => accounts.id, {
+      onDelete: 'cascade',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('scheduled_transactions_next_date_idx').on(table.nextDate)],
 );
 
 export const monthlyAssignments = pgTable(

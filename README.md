@@ -54,17 +54,18 @@ Run `nvm use` in new terminal sessions so you're on the project's Node version.
 
 ## Commands
 
-| Command               | What it does                                 |
-| --------------------- | -------------------------------------------- |
-| `npm run dev`         | Starts the API and client                    |
-| `npm test`            | Runs all unit, API and browser tests         |
-| `npm run test:unit`   | Runs unit and API tests only                 |
-| `npm run test:e2e`    | Runs Playwright browser tests only           |
-| `npm run lint`        | Checks code with ESLint and Prettier         |
-| `npm run format`      | Formats code with Prettier                   |
-| `npm run build`       | Type-checks and builds the client and server |
-| `npm run db:generate` | Generates a migration from schema changes    |
-| `npm run db:migrate`  | Applies migrations to `DATABASE_URL`         |
+| Command                 | What it does                                   |
+| ----------------------- | ---------------------------------------------- |
+| `npm run dev`           | Starts the API and client                      |
+| `npm test`              | Runs all unit, API and browser tests           |
+| `npm run test:unit`     | Runs unit and API tests only                   |
+| `npm run test:e2e`      | Runs Playwright browser tests only             |
+| `npm run test:coverage` | Runs unit and API tests with a coverage report |
+| `npm run lint`          | Checks code with ESLint and Prettier           |
+| `npm run format`        | Formats code with Prettier                     |
+| `npm run build`         | Type-checks and builds the client and server   |
+| `npm run db:generate`   | Generates a migration from schema changes      |
+| `npm run db:migrate`    | Applies migrations to `DATABASE_URL`           |
 
 ## Keeping data private
 

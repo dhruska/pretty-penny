@@ -20,12 +20,14 @@ const FIGURES: Record<Exclude<AutoAssignOption, 'underfunded'>, keyof BudgetCate
 
 /**
  * The Assigned amount an option would set, or null if it wouldn't change the category.
- * Underfunded covers overspending. The others put their amount into Assigned, as in YNAB, but
+ * Underfunded covers overspending and upcoming scheduled outflows. The others put their amount into Assigned, as in YNAB, but
  * never lower an amount that's already higher.
  */
 export function autoAssignTarget(category: BudgetCategory, option: AutoAssignOption) {
   if (option === 'underfunded') {
-    return category.availableCents < 0 ? category.assignedCents - category.availableCents : null;
+    // As in YNAB, cover overspending plus scheduled money still to go out this month.
+    const shortfall = -(category.availableCents + Math.min(0, category.upcomingCents));
+    return shortfall > 0 ? category.assignedCents + shortfall : null;
   }
   const amount = category[FIGURES[option]] as number;
   return amount > category.assignedCents ? amount : null;

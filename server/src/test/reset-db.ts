@@ -4,7 +4,7 @@ import type { Db } from '../db/client.js';
 /** Clears all data except the Ready to Assign category seeded by migrations. */
 export async function resetDb(db: Db) {
   await db.execute(
-    sql`truncate accounts, transactions, transaction_lines, monthly_assignments, payees restart identity cascade`,
+    sql`truncate accounts, transactions, transaction_lines, monthly_assignments, payees, scheduled_transactions restart identity cascade`,
   );
   await db.execute(sql`delete from categories where system_key is null`);
   await db.execute(sql`delete from category_groups`);

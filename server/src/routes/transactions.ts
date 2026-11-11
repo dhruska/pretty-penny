@@ -18,13 +18,13 @@ import {
 
 type Cleared = 'uncleared' | 'cleared';
 
-interface LineInput {
+export interface LineInput {
   categoryId: number | null;
   amountCents: number;
   memo?: string;
 }
 
-interface TransactionBody {
+export interface TransactionBody {
   date: string;
   payee?: string;
   memo?: string;
@@ -66,7 +66,7 @@ const MAX_SPLIT_LINES = 50;
 const nullableId = { ...categoryId, type: ['integer', 'null'] };
 const cleared = { type: 'string', enum: ['uncleared', 'cleared'] } as const;
 
-const fields = {
+export const fields = {
   date,
   payee,
   memo,
@@ -296,6 +296,73 @@ function assertOneCategoryChoice(body: Partial<TransactionBody>) {
   }
 }
 
+/**
+ * Checks a new transaction's account, transfer, category and split lines. Shared by the API and
+ * scheduled transactions, so both follow exactly the same rules.
+ */
+export async function prepareTransaction(tx: Executor, accountId: number, body: TransactionBody) {
+  assertOneCategoryChoice(body);
+
+  const account = await loadAccount(tx, accountId);
+  if (!account) throw new HttpError(404, 'Account not found');
+  if (account.closed) throw new HttpError(409, 'Reopen this account to add transactions.');
+
+  const other = await resolveTransferAccount(tx, account, body.transferAccountId ?? null, null);
+  const holder = lineHolder(account, other);
+
+  let lines: LineInput[];
+  if (body.lines) {
+    assertValidSplit(body.lines, body.amountCents, holder);
+    lines = body.lines;
+  } else {
+    const categoryIdValue = body.categoryId ?? null;
+    if (categoryIdValue !== null && holder === null) {
+      throw new HttpError(400, NO_CATEGORY_MESSAGE);
+    }
+    lines = [{ categoryId: categoryIdValue, amountCents: body.amountCents }];
+  }
+  await assertCategoriesExist(
+    tx,
+    lines.map((line) => line.categoryId),
+  );
+
+  return { account, other, holder, lines };
+}
+
+/** Creates a transaction, with its transfer pair and category lines, and returns its id. */
+export async function createTransaction(
+  tx: Executor,
+  accountId: number,
+  body: TransactionBody,
+  scheduledTransactionId: number | null = null,
+) {
+  const { account, other, holder, lines } = await prepareTransaction(tx, accountId, body);
+
+  const memoValue = body.memo?.trim() ?? '';
+  const [row] = await tx
+    .insert(transactions)
+    .values({
+      accountId: account.id,
+      date: body.date,
+      payeeId: other ? null : await resolvePayee(tx, body.payee),
+      memo: memoValue,
+      amountCents: body.amountCents,
+      cleared: body.cleared ?? defaultCleared(account),
+      scheduledTransactionId,
+    })
+    .returning({ id: transactions.id });
+
+  const pairId = other
+    ? await createPair(tx, row!.id, other, {
+        date: body.date,
+        memo: memoValue,
+        amountCents: body.amountCents,
+      })
+    : null;
+  await writeLines(tx, { self: row!.id, pair: pairId }, holder, lines);
+  return row!.id;
+}
+
 export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
   app.get<{ Params: IdParams }>(
     '/api/accounts/:id/transactions',
@@ -388,60 +455,9 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
       },
     },
     async (request, reply) => {
-      const { body } = request;
-      assertOneCategoryChoice(body);
-
       const created = await db.transaction(async (tx) => {
-        const account = await loadAccount(tx, request.params.id);
-        if (!account) throw new HttpError(404, 'Account not found');
-        if (account.closed) throw new HttpError(409, 'Reopen this account to add transactions.');
-
-        const other = await resolveTransferAccount(
-          tx,
-          account,
-          body.transferAccountId ?? null,
-          null,
-        );
-        const holder = lineHolder(account, other);
-
-        let lines: LineInput[];
-        if (body.lines) {
-          assertValidSplit(body.lines, body.amountCents, holder);
-          lines = body.lines;
-        } else {
-          const categoryIdValue = body.categoryId ?? null;
-          if (categoryIdValue !== null && holder === null) {
-            throw new HttpError(400, NO_CATEGORY_MESSAGE);
-          }
-          lines = [{ categoryId: categoryIdValue, amountCents: body.amountCents }];
-        }
-        await assertCategoriesExist(
-          tx,
-          lines.map((line) => line.categoryId),
-        );
-
-        const memoValue = body.memo?.trim() ?? '';
-        const [row] = await tx
-          .insert(transactions)
-          .values({
-            accountId: account.id,
-            date: body.date,
-            payeeId: other ? null : await resolvePayee(tx, body.payee),
-            memo: memoValue,
-            amountCents: body.amountCents,
-            cleared: body.cleared ?? defaultCleared(account),
-          })
-          .returning({ id: transactions.id });
-
-        const pairId = other
-          ? await createPair(tx, row!.id, other, {
-              date: body.date,
-              memo: memoValue,
-              amountCents: body.amountCents,
-            })
-          : null;
-        await writeLines(tx, { self: row!.id, pair: pairId }, holder, lines);
-        return findTransaction(tx, row!.id);
+        const id = await createTransaction(tx, request.params.id, request.body);
+        return findTransaction(tx, id);
       });
 
       return reply.code(201).send(created);

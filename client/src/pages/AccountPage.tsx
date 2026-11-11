@@ -1,4 +1,5 @@
-import { api, type Account, type TransactionInput } from '@/api';
+import { api, type Account, type Frequency, type TransactionInput } from '@/api';
+import { ScheduledList } from '@/components/ScheduledList';
 import { AccountTypeSelect } from '@/components/AccountTypeSelect';
 import { ConfirmDelete } from '@/components/ConfirmDelete';
 import { Money } from '@/components/Money';
@@ -65,8 +66,13 @@ function AccountDetails({ account }: { account: Account }) {
     },
   });
 
-  async function addTransaction(input: TransactionInput) {
-    await api.createTransaction(account.id, input);
+  async function addTransaction(input: TransactionInput, frequency: Frequency | null) {
+    // As in YNAB, a repeating or future-dated transaction becomes a scheduled transaction.
+    if (frequency !== null || input.date > today()) {
+      await api.createScheduled(account.id, { ...input, frequency: frequency ?? 'never' });
+    } else {
+      await api.createTransaction(account.id, input);
+    }
     await invalidate();
   }
 
@@ -190,10 +196,13 @@ function AccountDetails({ account }: { account: Account }) {
             label="Add transaction"
             submitLabel="Add transaction"
             account={account}
+            allowRepeat
             onSubmit={addTransaction}
           />
         </section>
       )}
+
+      <ScheduledList account={account} />
 
       {transactions.isPending && <p className="text-muted-foreground">Loading…</p>}
       {transactions.isError && <p className="text-negative">{transactions.error.message}</p>}

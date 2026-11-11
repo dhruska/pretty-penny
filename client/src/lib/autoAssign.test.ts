@@ -14,6 +14,7 @@ function category(overrides: Partial<BudgetCategory>): BudgetCategory {
     spentLastMonthCents: 0,
     averageAssignedCents: 0,
     averageSpentCents: 0,
+    upcomingCents: 0,
     ...overrides,
   };
 }
@@ -24,6 +25,30 @@ describe('autoAssignTarget', () => {
       autoAssignTarget(category({ assignedCents: 50_00, availableCents: -30_00 }), 'underfunded'),
     ).toBe(80_00);
     expect(autoAssignTarget(category({ availableCents: 10_00 }), 'underfunded')).toBeNull();
+  });
+
+  it('covers upcoming scheduled outflows for Underfunded, counting money already available', () => {
+    expect(
+      autoAssignTarget(
+        category({ assignedCents: 100_00, availableCents: 100_00, upcomingCents: -1_800_00 }),
+        'underfunded',
+      ),
+    ).toBe(1_800_00);
+    expect(
+      autoAssignTarget(category({ availableCents: -30_00, upcomingCents: -50_00 }), 'underfunded'),
+    ).toBe(80_00);
+    expect(
+      autoAssignTarget(
+        category({ availableCents: 2_000_00, upcomingCents: -1_800_00 }),
+        'underfunded',
+      ),
+    ).toBeNull();
+  });
+
+  it('ignores upcoming inflows for Underfunded', () => {
+    expect(
+      autoAssignTarget(category({ availableCents: -30_00, upcomingCents: 500_00 }), 'underfunded'),
+    ).toBe(30_00);
   });
 
   it('puts the amount into Assigned, ignoring money already available', () => {

@@ -1,10 +1,19 @@
-import { api, type Account, type LineInput, type Transaction, type TransactionInput } from '@/api';
+import {
+  api,
+  type Account,
+  type Frequency,
+  type LineInput,
+  type TransactionDraft,
+  type TransactionInput,
+} from '@/api';
+import { FREQUENCY_OPTIONS } from '@/lib/frequencies';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { today } from '@/lib/dates';
 import { amountFromFields, centsToInput, formatCents } from '@/lib/money';
 import { useQuery } from '@tanstack/react-query';
+import { cn } from 'cn';
 import { useId, useState, type ComponentProps, type FormEvent } from 'react';
 import { CategorySelect, SELECT_CLASS } from './CategorySelect';
 import {
@@ -19,8 +28,12 @@ interface TransactionFormProps {
   label: string;
   submitLabel: string;
   account: Account;
-  transaction?: Transaction;
-  onSubmit: (input: TransactionInput) => Promise<void>;
+  transaction?: TransactionDraft;
+  /** Offers a Repeat choice, for new transactions and schedules. */
+  allowRepeat?: boolean;
+  initialFrequency?: Frequency;
+  /** `frequency` is null when the transaction doesn't repeat. */
+  onSubmit: (input: TransactionInput, frequency: Frequency | null) => Promise<void>;
   onCancel?: () => void;
 }
 
@@ -29,10 +42,13 @@ export function TransactionForm({
   submitLabel,
   account,
   transaction,
+  allowRepeat = false,
+  initialFrequency,
   onSubmit,
   onCancel,
 }: TransactionFormProps) {
   const id = useId();
+  const [frequency, setFrequency] = useState<Frequency | null>(initialFrequency ?? null);
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts });
   const amount = transaction?.amountCents ?? 0;
   const [date, setDate] = useState(transaction?.date ?? today());
@@ -153,15 +169,19 @@ export function TransactionForm({
     setError(null);
     setIsSaving(true);
     try {
-      await onSubmit({
-        date,
-        payee: isTransfer ? '' : payee,
-        memo,
-        ...(lines ? { lines } : { categoryId: usesCategory ? categoryId : null }),
-        transferAccountId,
-        amountCents: result.cents,
-      });
+      await onSubmit(
+        {
+          date,
+          payee: isTransfer ? '' : payee,
+          memo,
+          ...(lines ? { lines } : { categoryId: usesCategory ? categoryId : null }),
+          transferAccountId,
+          amountCents: result.cents,
+        },
+        frequency,
+      );
       if (!transaction) {
+        setFrequency(initialFrequency ?? null);
         setTransferAccountId(null);
         setPayee('');
         setCategoryId(null);
@@ -199,7 +219,14 @@ export function TransactionForm({
 
   return (
     <form aria-label={label} onSubmit={handleSubmit} className="space-y-2">
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-[9rem_10rem_1fr_1.2fr_1fr_5.5rem_5.5rem]">
+      <div
+        className={cn(
+          'grid grid-cols-2 gap-2 md:grid-cols-4',
+          allowRepeat
+            ? 'xl:grid-cols-[9rem_9rem_9rem_1fr_1.2fr_1fr_5.5rem_5.5rem]'
+            : 'xl:grid-cols-[9rem_10rem_1fr_1.2fr_1fr_5.5rem_5.5rem]',
+        )}
+      >
         <div className="col-span-2 space-y-1 md:col-span-1">
           <Label htmlFor={`${id}-date`}>Date</Label>
           <Input
@@ -209,6 +236,26 @@ export function TransactionForm({
             onChange={(event) => setDate(event.target.value)}
           />
         </div>
+        {allowRepeat && (
+          <div className="min-w-0 space-y-1">
+            <Label htmlFor={`${id}-repeat`}>Repeat</Label>
+            <select
+              id={`${id}-repeat`}
+              className={SELECT_CLASS}
+              value={frequency ?? ''}
+              onChange={(event) =>
+                setFrequency(event.target.value === '' ? null : (event.target.value as Frequency))
+              }
+            >
+              <option value="">Doesn’t repeat</option>
+              {FREQUENCY_OPTIONS.filter((option) => option.value !== 'never').map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="min-w-0 space-y-1">
           <Label htmlFor={`${id}-transfer`}>Transfer</Label>
           <select
@@ -266,7 +313,13 @@ export function TransactionForm({
             </select>
           )}
         </div>
-        <div className="col-span-2 md:col-span-2 xl:col-span-1">
+        {/* With Repeat shown, a one-column memo keeps the form to two rows of four. */}
+        <div
+          className={cn(
+            'col-span-2 xl:col-span-1',
+            allowRepeat ? 'md:col-span-1' : 'md:col-span-2',
+          )}
+        >
           {textField('Memo', memo, setMemo, { maxLength: 500 })}
         </div>
         {textField('Outflow', outflow, setOutflow, { inputMode: 'decimal' })}

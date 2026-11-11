@@ -50,6 +50,13 @@
       "when": 1794372511437,
       "tag": "0006_reconciliation",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794373521403,
+      "tag": "0007_scheduled_transactions",
+      "breakpoints": true
     }
   ]
 }

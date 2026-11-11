@@ -82,6 +82,46 @@ export interface TransactionInput {
   transferAccountId: number | null;
 }
 
+/** YNAB's frequencies; `never` means once. */
+export type Frequency =
+  | 'never'
+  | 'daily'
+  | 'weekly'
+  | 'everyOtherWeek'
+  | 'twiceAMonth'
+  | 'every4Weeks'
+  | 'monthly'
+  | 'everyOtherMonth'
+  | 'every3Months'
+  | 'every4Months'
+  | 'twiceAYear'
+  | 'yearly'
+  | 'everyOtherYear';
+
+/** A transaction input plus how often it repeats; `date` is the first occurrence. */
+export type ScheduleInput = TransactionInput & { frequency: Frequency };
+
+export interface ScheduledTransaction {
+  id: number;
+  accountId: number;
+  frequency: Frequency;
+  nextDate: string;
+  payee: string;
+  memo: string;
+  amountCents: number;
+  categoryId: number | null;
+  categoryName: string | null;
+  lines: LineInput[] | null;
+  transferAccountId: number | null;
+  transferAccountName: string | null;
+}
+
+/** The fields a transaction form can start from: a transaction, or a schedule's next occurrence. */
+export type TransactionDraft = Pick<
+  Transaction,
+  'date' | 'payee' | 'memo' | 'amountCents' | 'categoryId' | 'transferAccountId' | 'lines'
+>;
+
 export interface Category {
   id: number;
   name: string;
@@ -108,6 +148,8 @@ export interface BudgetCategory extends Category {
   spentLastMonthCents: number;
   averageAssignedCents: number;
   averageSpentCents: number;
+  /** Scheduled money still to come this month; negative for outflows. */
+  upcomingCents: number;
 }
 
 export interface AssignmentInput {
@@ -177,6 +219,15 @@ export const api = {
   searchTransactions: (filters: URLSearchParams) =>
     request<SearchResults>(`/transactions?${filters}`),
   listPayees: () => request<Payee[]>('/payees'),
+  listScheduled: (accountId: number) =>
+    request<ScheduledTransaction[]>(`/accounts/${accountId}/scheduled`),
+  createScheduled: (accountId: number, input: ScheduleInput) =>
+    request<{ id: number; posted: number }>(`/accounts/${accountId}/scheduled`, 'POST', input),
+  updateScheduled: (id: number, input: ScheduleInput) =>
+    request<{ id: number; posted: number }>(`/scheduled/${id}`, 'PUT', input),
+  deleteScheduled: (id: number) => request<void>(`/scheduled/${id}`, 'DELETE'),
+  enterScheduledNow: (id: number) => request<void>(`/scheduled/${id}/enter-now`, 'POST'),
+  skipScheduled: (id: number) => request<void>(`/scheduled/${id}/skip`, 'POST'),
   /** The delete dialog is the warning for reconciled transactions, so the UI always confirms. */
   deleteTransaction: (id: number) =>
     request<void>(`/transactions/${id}?confirmReconciled=true`, 'DELETE'),
