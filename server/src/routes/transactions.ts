@@ -1,8 +1,22 @@
-import { desc, eq, inArray, or, sql } from 'drizzle-orm';
+import {
+  and,
+  desc,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { FastifyInstance } from 'fastify';
-import type { Db } from '../db/client.js';
-import { accounts, categories, transactionLines, transactions } from '../db/schema.js';
+import type { Db, Executor } from '../db/client.js';
+import { accounts, categories, payees, transactionLines, transactions } from '../db/schema.js';
+import { resolvePayee } from './payees.js';
 import {
   amountCents,
   categoryId,
@@ -14,7 +28,7 @@ import {
   type IdParams,
 } from './schemas.js';
 
-type Executor = Db | Parameters<Parameters<Db['transaction']>[0]>[0];
+type Cleared = 'uncleared' | 'cleared';
 
 interface TransactionBody {
   date: string;
@@ -23,15 +37,29 @@ interface TransactionBody {
   amountCents: number;
   categoryId?: number | null;
   transferAccountId?: number | null;
+  cleared?: Cleared;
+}
+
+interface SearchQuery {
+  q?: string;
+  accountId?: number;
+  categoryId?: string;
+  from?: string;
+  to?: string;
+  cleared?: Cleared;
 }
 
 interface AccountInfo {
   id: number;
+  type: string;
   onBudget: boolean;
   closed: boolean;
 }
 
+const SEARCH_LIMIT = 500;
+
 const nullableId = { ...categoryId, type: ['integer', 'null'] };
+const cleared = { type: 'string', enum: ['uncleared', 'cleared'] } as const;
 
 const fields = {
   date,
@@ -40,24 +68,77 @@ const fields = {
   amountCents,
   categoryId: nullableId,
   transferAccountId: nullableId,
+  cleared,
 };
 
-const columns = {
+const pair = alias(transactions, 'pair');
+const pairAccount = alias(accounts, 'pair_account');
+
+// A transaction has at most one line until split transactions are added, held either by the
+// transaction itself or by the budget side of its transfer pair.
+const listColumns = {
   id: transactions.id,
   accountId: transactions.accountId,
+  accountName: accounts.name,
   date: transactions.date,
-  payee: transactions.payee,
+  payee: sql<string>`coalesce(${payees.name}, '')`,
   memo: transactions.memo,
   amountCents: transactions.amountCents,
+  cleared: transactions.cleared,
+  transferAccountId: pair.accountId,
+  transferAccountName: pairAccount.name,
+  hasCategoryLine: sql<boolean>`${transactionLines.id} is not null`,
+  categoryId: transactionLines.categoryId,
+  categoryName: categories.name,
 };
+
+const lineJoin = or(
+  eq(transactionLines.transactionId, transactions.id),
+  eq(transactionLines.transactionId, transactions.transferTransactionId),
+);
+
+const newestFirst = [
+  desc(transactions.date),
+  desc(transactions.createdAt),
+  desc(transactions.id),
+] as const;
+
+/** Lists transactions with their account, payee, transfer and category details. */
+function findTransactions(db: Executor, where: SQL | undefined, limit?: number) {
+  const query = db
+    .select(listColumns)
+    .from(transactions)
+    .innerJoin(accounts, eq(accounts.id, transactions.accountId))
+    .leftJoin(payees, eq(payees.id, transactions.payeeId))
+    .leftJoin(pair, eq(pair.id, transactions.transferTransactionId))
+    .leftJoin(pairAccount, eq(pairAccount.id, pair.accountId))
+    .leftJoin(transactionLines, lineJoin)
+    .leftJoin(categories, eq(transactionLines.categoryId, categories.id))
+    .where(where)
+    .orderBy(...newestFirst)
+    .$dynamic();
+  return limit === undefined ? query : query.limit(limit);
+}
+
+async function findTransaction(db: Executor, id: number) {
+  const [row] = await findTransactions(db, eq(transactions.id, id));
+  return row!;
+}
 
 const NO_CATEGORY_MESSAGE =
   'Tracking account transactions and transfers between budget accounts don’t use a category.';
+
+/** As in YNAB, transactions entered in cash accounts start out cleared. */
+const defaultCleared = (account: AccountInfo): Cleared =>
+  account.type === 'cash' ? 'cleared' : 'uncleared';
+
+const escapeLike = (text: string) => text.replace(/[\\%_]/g, '\\$&');
 
 async function loadAccount(tx: Executor, id: number): Promise<AccountInfo | undefined> {
   const [account] = await tx
     .select({
       id: accounts.id,
+      type: accounts.type,
       onBudget: accounts.onBudget,
       closed: sql<boolean>`${accounts.closedAt} is not null`,
     })
@@ -126,30 +207,25 @@ async function writeLines(
 async function createPair(
   tx: Executor,
   sourceId: number,
-  otherAccountId: number,
+  other: AccountInfo,
   values: { date: string; memo: string; amountCents: number },
 ) {
-  const [pair] = await tx
+  const [created] = await tx
     .insert(transactions)
     .values({
-      accountId: otherAccountId,
+      accountId: other.id,
       date: values.date,
-      payee: '',
       memo: values.memo,
       amountCents: -values.amountCents,
+      cleared: defaultCleared(other),
       transferTransactionId: sourceId,
     })
     .returning({ id: transactions.id });
   await tx
     .update(transactions)
-    .set({ transferTransactionId: pair!.id })
+    .set({ transferTransactionId: created!.id })
     .where(eq(transactions.id, sourceId));
-  return pair!.id;
-}
-
-async function selectTransaction(tx: Executor, id: number) {
-  const [row] = await tx.select(columns).from(transactions).where(eq(transactions.id, id));
-  return row!;
+  return created!.id;
 }
 
 export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
@@ -162,36 +238,72 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
         return reply.code(404).send({ message: 'Account not found' });
       }
 
-      const pair = alias(transactions, 'pair');
-      const pairAccount = alias(accounts, 'pair_account');
-
-      // A transaction has at most one line until split transactions are added, held either by
-      // the transaction itself or by the budget side of its transfer pair.
       return db
         .select({
-          ...columns,
-          transferAccountId: pair.accountId,
-          transferAccountName: pairAccount.name,
-          hasCategoryLine: sql<boolean>`${transactionLines.id} is not null`,
-          categoryId: transactionLines.categoryId,
-          categoryName: categories.name,
+          ...listColumns,
           runningBalanceCents: sql<number>`sum(${transactions.amountCents}) over (
             order by ${transactions.date}, ${transactions.createdAt}, ${transactions.id}
           )`.mapWith(Number),
         })
         .from(transactions)
+        .innerJoin(accounts, eq(accounts.id, transactions.accountId))
+        .leftJoin(payees, eq(payees.id, transactions.payeeId))
         .leftJoin(pair, eq(pair.id, transactions.transferTransactionId))
         .leftJoin(pairAccount, eq(pairAccount.id, pair.accountId))
-        .leftJoin(
-          transactionLines,
-          or(
-            eq(transactionLines.transactionId, transactions.id),
-            eq(transactionLines.transactionId, transactions.transferTransactionId),
-          ),
-        )
+        .leftJoin(transactionLines, lineJoin)
         .leftJoin(categories, eq(transactionLines.categoryId, categories.id))
         .where(eq(transactions.accountId, id))
-        .orderBy(desc(transactions.date), desc(transactions.createdAt), desc(transactions.id));
+        .orderBy(...newestFirst);
+    },
+  );
+
+  app.get<{ Querystring: SearchQuery }>(
+    '/api/transactions',
+    {
+      schema: {
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            q: { type: 'string', maxLength: 200 },
+            accountId: categoryId,
+            categoryId: { type: 'string', pattern: '^([0-9]{1,10}|uncategorized)$' },
+            from: date,
+            to: date,
+            cleared,
+          },
+        },
+      },
+    },
+    async (request) => {
+      const { q, accountId, categoryId: category, from, to, cleared: status } = request.query;
+      const conditions: (SQL | undefined)[] = [];
+
+      const text = q?.trim();
+      if (text) {
+        const pattern = `%${escapeLike(text)}%`;
+        conditions.push(
+          or(
+            ilike(payees.name, pattern),
+            ilike(categories.name, pattern),
+            ilike(transactions.memo, pattern),
+            ilike(accounts.name, pattern),
+            ilike(pairAccount.name, pattern),
+          ),
+        );
+      }
+      if (accountId !== undefined) conditions.push(eq(transactions.accountId, accountId));
+      if (category === 'uncategorized') {
+        conditions.push(and(isNotNull(transactionLines.id), isNull(transactionLines.categoryId)));
+      } else if (category !== undefined) {
+        conditions.push(eq(transactionLines.categoryId, Number(category)));
+      }
+      if (from) conditions.push(gte(transactions.date, from));
+      if (to) conditions.push(lte(transactions.date, to));
+      if (status) conditions.push(eq(transactions.cleared, status));
+
+      const rows = await findTransactions(db, and(...conditions), SEARCH_LIMIT + 1);
+      return { transactions: rows.slice(0, SEARCH_LIMIT), hasMore: rows.length > SEARCH_LIMIT };
     },
   );
 
@@ -224,8 +336,9 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
         );
         const holder = lineHolder(account, other);
         const categoryIdValue = body.categoryId ?? null;
-        if (categoryIdValue !== null && holder === null)
+        if (categoryIdValue !== null && holder === null) {
           throw new HttpError(400, NO_CATEGORY_MESSAGE);
+        }
         await assertCategoryExists(tx, categoryIdValue);
 
         const memoValue = body.memo?.trim() ?? '';
@@ -234,14 +347,15 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
           .values({
             accountId: account.id,
             date: body.date,
-            payee: other ? '' : (body.payee?.trim() ?? ''),
+            payeeId: other ? null : await resolvePayee(tx, body.payee),
             memo: memoValue,
             amountCents: body.amountCents,
+            cleared: body.cleared ?? defaultCleared(account),
           })
           .returning({ id: transactions.id });
 
         const pairId = other
-          ? await createPair(tx, row!.id, other.id, {
+          ? await createPair(tx, row!.id, other, {
               date: body.date,
               memo: memoValue,
               amountCents: body.amountCents,
@@ -254,7 +368,7 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
           categoryIdValue,
           body.amountCents,
         );
-        return selectTransaction(tx, row!.id);
+        return findTransaction(tx, row!.id);
       });
 
       return reply.code(201).send(created);
@@ -275,7 +389,15 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
 
       return db.transaction(async (tx) => {
         const [current] = await tx
-          .select({ ...columns, transferTransactionId: transactions.transferTransactionId })
+          .select({
+            accountId: transactions.accountId,
+            date: transactions.date,
+            memo: transactions.memo,
+            amountCents: transactions.amountCents,
+            payeeId: transactions.payeeId,
+            cleared: transactions.cleared,
+            transferTransactionId: transactions.transferTransactionId,
+          })
           .from(transactions)
           .where(eq(transactions.id, id));
         if (!current) throw new HttpError(404, 'Transaction not found');
@@ -296,8 +418,9 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
         );
 
         const holder = lineHolder(account, other);
-        if (body.categoryId != null && holder === null)
+        if (body.categoryId != null && holder === null) {
           throw new HttpError(400, NO_CATEGORY_MESSAGE);
+        }
         const [currentLine] = await tx
           .select({ categoryId: transactionLines.categoryId })
           .from(transactionLines)
@@ -315,7 +438,12 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
           date: body.date ?? current.date,
           memo: body.memo?.trim() ?? current.memo,
           amountCents: body.amountCents ?? current.amountCents,
-          payee: other ? '' : (body.payee?.trim() ?? current.payee),
+          cleared: body.cleared ?? current.cleared,
+          payeeId: other
+            ? null
+            : body.payee === undefined
+              ? current.payeeId
+              : await resolvePayee(tx, body.payee),
         };
 
         const keepPair = currentPair !== undefined && other?.id === currentPair.accountId;
@@ -331,13 +459,14 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
 
         let pairId: number | null = null;
         if (keepPair) {
+          // The other side keeps its own cleared status, as in YNAB.
           pairId = currentPair.id;
           await tx
             .update(transactions)
             .set({ date: values.date, amountCents: -values.amountCents })
             .where(eq(transactions.id, pairId));
         } else if (other) {
-          pairId = await createPair(tx, id, other.id, values);
+          pairId = await createPair(tx, id, other, values);
         }
 
         await writeLines(
@@ -347,7 +476,7 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
           categoryIdValue,
           values.amountCents,
         );
-        return selectTransaction(tx, id);
+        return findTransaction(tx, id);
       });
     },
   );

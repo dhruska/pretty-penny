@@ -5,21 +5,38 @@ export interface Account {
   onBudget: boolean;
   closed: boolean;
   balanceCents: number;
+  clearedBalanceCents: number;
 }
+
+export type ClearedStatus = 'uncleared' | 'cleared';
 
 export interface Transaction {
   id: number;
   accountId: number;
+  accountName: string;
   date: string;
   payee: string;
   memo: string;
   amountCents: number;
+  cleared: ClearedStatus;
   categoryId: number | null;
   categoryName: string | null;
   hasCategoryLine: boolean;
   transferAccountId: number | null;
   transferAccountName: string | null;
-  runningBalanceCents: number;
+  /** Only in a single account's register. */
+  runningBalanceCents?: number;
+}
+
+export interface Payee {
+  id: number;
+  name: string;
+  defaultCategoryId: number | null;
+}
+
+export interface SearchResults {
+  transactions: Transaction[];
+  hasMore: boolean;
 }
 
 export interface TransactionInput {
@@ -109,8 +126,11 @@ export const api = {
     request<Transaction[]>(`/accounts/${accountId}/transactions`),
   createTransaction: (accountId: number, input: TransactionInput) =>
     request<void>(`/accounts/${accountId}/transactions`, 'POST', input),
-  updateTransaction: (id: number, input: TransactionInput) =>
+  updateTransaction: (id: number, input: Partial<TransactionInput> & { cleared?: ClearedStatus }) =>
     request<void>(`/transactions/${id}`, 'PATCH', input),
+  searchTransactions: (filters: URLSearchParams) =>
+    request<SearchResults>(`/transactions?${filters}`),
+  listPayees: () => request<Payee[]>('/payees'),
   deleteTransaction: (id: number) => request<void>(`/transactions/${id}`, 'DELETE'),
   getBudget: (month: string, currentMonth: string) =>
     request<Budget>(`/budget?month=${month}&currentMonth=${currentMonth}`),

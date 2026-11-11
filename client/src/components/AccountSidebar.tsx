@@ -62,12 +62,23 @@ export function AccountSidebar() {
         end
         className={({ isActive }) =>
           cn(
-            'mb-4 block rounded-md px-2 py-1.5 text-sm hover:bg-muted',
+            'mb-1 block rounded-md px-2 py-1.5 text-sm hover:bg-muted',
             isActive && 'bg-muted font-medium',
           )
         }
       >
         Budget
+      </NavLink>
+      <NavLink
+        to="/transactions"
+        className={({ isActive }) =>
+          cn(
+            'mb-4 block rounded-md px-2 py-1.5 text-sm hover:bg-muted',
+            isActive && 'bg-muted font-medium',
+          )
+        }
+      >
+        All transactions
       </NavLink>
 
       {accounts.isError && <p className="text-sm text-negative">{accounts.error.message}</p>}

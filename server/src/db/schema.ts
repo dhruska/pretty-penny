@@ -9,7 +9,9 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const READY_TO_ASSIGN_KEY = 'ready_to_assign';
 
@@ -23,6 +25,15 @@ export const accounts = pgTable('accounts', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const payees = pgTable(
+  'payees',
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    name: text().notNull(),
+  },
+  (table) => [uniqueIndex('payees_name_lower_unique').on(sql`lower(${table.name})`)],
+);
+
 export const transactions = pgTable(
   'transactions',
   {
@@ -31,7 +42,10 @@ export const transactions = pgTable(
       .notNull()
       .references(() => accounts.id, { onDelete: 'cascade' }),
     date: date({ mode: 'string' }).notNull(),
-    payee: text().notNull().default(''),
+    // Transfers and transactions with a blank payee have none.
+    payeeId: integer('payee_id').references(() => payees.id, { onDelete: 'set null' }),
+    // 'uncleared' or 'cleared'. Reconciliation will add 'reconciled'.
+    cleared: text().notNull().default('uncleared'),
     memo: text().notNull().default(''),
     // Negative for outflows. Limits in routes/schemas.ts keep this within JavaScript's safe range.
     amountCents: bigint('amount_cents', { mode: 'number' }).notNull(),

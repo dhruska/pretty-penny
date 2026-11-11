@@ -102,7 +102,8 @@ test('flags uncategorized transactions until they have a category', async ({ pag
   const editForm = page.getByRole('form', { name: 'Edit transaction' });
   await editForm.getByLabel('Category').selectOption({ label: 'Groceries' });
   await editForm.getByRole('button', { name: 'Save' }).click();
-  await expect(row(page, 'Mystery Shop')).toContainText('Groceries');
+  // The notice opens the Uncategorized list, so the transaction leaves it once categorized.
+  await expect(page.getByText('No transactions match.')).toBeVisible();
 
   await openBudget(page);
   await expect(page.getByText('needs a category')).toHaveCount(0);

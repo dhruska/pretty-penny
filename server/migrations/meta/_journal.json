@@ -29,6 +29,20 @@
       "when": 1794366252631,
       "tag": "0003_account_model",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794370419732,
+      "tag": "0004_payees_and_cleared",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794370420096,
+      "tag": "0005_drop_payee_text",
+      "breakpoints": true
     }
   ]
 }

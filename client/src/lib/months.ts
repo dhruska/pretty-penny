@@ -30,6 +30,12 @@ export function shiftMonth(month: string, delta: number): string {
   return `${String(year).padStart(4, '0')}-${String(monthIndex + 1).padStart(2, '0')}`;
 }
 
+/** The first and last dates of a month, as YYYY-MM-DD. */
+export function monthRange(month: string): { from: string; to: string } {
+  const lastDay = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate();
+  return { from: `${month}-01`, to: `${month}-${String(lastDay).padStart(2, '0')}` };
+}
+
 export function formatMonth(month: string): string {
   return `${MONTH_NAMES[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`;
 }

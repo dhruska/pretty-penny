@@ -22,7 +22,10 @@ function UncategorizedNotice({ uncategorized }: { uncategorized: Budget['uncateg
       <ul className="mt-1 flex flex-wrap gap-x-4">
         {uncategorized.map((account) => (
           <li key={account.accountId}>
-            <Link to={`/accounts/${account.accountId}`} className="underline underline-offset-2">
+            <Link
+              to={`/transactions?categoryId=uncategorized&accountId=${account.accountId}`}
+              className="underline underline-offset-2"
+            >
               {account.accountName} ({account.count})
             </Link>
           </li>

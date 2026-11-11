@@ -1,7 +1,7 @@
 import { and, asc, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { isBudgetType, type AccountType } from '../account-types.js';
-import type { Db } from '../db/client.js';
+import type { Db, Executor } from '../db/client.js';
 import {
   accounts,
   categories,
@@ -19,8 +19,7 @@ import {
   STARTING_BALANCE_PAYEE,
   type IdParams,
 } from './schemas.js';
-
-type Executor = Db | Parameters<Parameters<Db['transaction']>[0]>[0];
+import { resolvePayee } from './payees.js';
 
 interface CreateAccountBody {
   name: string;
@@ -48,9 +47,15 @@ async function addBalanceTransaction(
   account: { id: number; onBudget: boolean },
   values: { date: string; payee: string; amountCents: number; isStartingBalance: boolean },
 ) {
+  const { payee, ...rest } = values;
   const [created] = await tx
     .insert(transactions)
-    .values({ accountId: account.id, ...values })
+    .values({
+      accountId: account.id,
+      ...rest,
+      payeeId: await resolvePayee(tx, payee),
+      cleared: 'cleared',
+    })
     .returning({ id: transactions.id });
   if (!account.onBudget) return;
 
@@ -76,6 +81,10 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db) {
       .select({
         ...accountColumns,
         balanceCents: sql<number>`coalesce(sum(${transactions.amountCents}), 0)`.mapWith(Number),
+        clearedBalanceCents: sql<number>`coalesce(
+          sum(${transactions.amountCents}) filter (where ${transactions.cleared} <> 'uncleared'),
+          0
+        )`.mapWith(Number),
       })
       .from(accounts)
       .leftJoin(transactions, eq(transactions.accountId, accounts.id))

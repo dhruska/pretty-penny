@@ -9,7 +9,7 @@ export async function resetDb() {
 
   const sql = postgres(url, { onnotice: () => {} });
   try {
-    await sql`truncate accounts, transactions, transaction_lines, monthly_assignments restart identity cascade`;
+    await sql`truncate accounts, transactions, transaction_lines, monthly_assignments, payees restart identity cascade`;
     await sql`delete from categories where system_key is null`;
     await sql`delete from category_groups`;
   } finally {

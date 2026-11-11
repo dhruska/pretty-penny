@@ -34,6 +34,9 @@ export function TransactionForm({
   );
   const [payee, setPayee] = useState(transaction?.payee ?? '');
   const [categoryId, setCategoryId] = useState(transaction?.categoryId ?? null);
+  // Choosing a payee fills in its usual category, unless a category was already chosen.
+  const [categoryChosen, setCategoryChosen] = useState(transaction !== undefined);
+  const payees = useQuery({ queryKey: ['payees'], queryFn: api.listPayees });
   const [memo, setMemo] = useState(transaction?.memo ?? '');
   const [outflow, setOutflow] = useState(amount < 0 ? centsToInput(amount) : '');
   const [inflow, setInflow] = useState(amount > 0 ? centsToInput(amount) : '');
@@ -51,6 +54,20 @@ export function TransactionForm({
   const usesCategory = isTransfer
     ? transferAccount !== undefined && transferAccount.onBudget !== account.onBudget
     : account.onBudget;
+
+  function choosePayee(value: string) {
+    setPayee(value);
+    if (categoryChosen) return;
+    const match = payees.data?.find(
+      (option) => option.name.toLowerCase() === value.trim().toLowerCase(),
+    );
+    if (match?.defaultCategoryId != null) setCategoryId(match.defaultCategoryId);
+  }
+
+  function chooseCategory(value: number | null) {
+    setCategoryChosen(true);
+    setCategoryId(value);
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -80,6 +97,7 @@ export function TransactionForm({
         setTransferAccountId(null);
         setPayee('');
         setCategoryId(null);
+        setCategoryChosen(false);
         setMemo('');
         setOutflow('');
         setInflow('');
@@ -144,11 +162,20 @@ export function TransactionForm({
           ? textField('Payee', `Transfer: ${transferAccount?.name ?? ''}`, () => {}, {
               disabled: true,
             })
-          : textField('Payee', payee, setPayee, { maxLength: 200 })}
+          : textField('Payee', payee, choosePayee, {
+              maxLength: 200,
+              list: `${id}-payees`,
+              autoComplete: 'off',
+            })}
+        <datalist id={`${id}-payees`}>
+          {payees.data?.map((option) => (
+            <option key={option.id} value={option.name} />
+          ))}
+        </datalist>
         <div className="min-w-0 space-y-1">
           <Label htmlFor={`${id}-category`}>Category</Label>
           {usesCategory ? (
-            <CategorySelect id={`${id}-category`} value={categoryId} onChange={setCategoryId} />
+            <CategorySelect id={`${id}-category`} value={categoryId} onChange={chooseCategory} />
           ) : (
             <select id={`${id}-category`} className={SELECT_CLASS} disabled>
               <option>Not needed</option>

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { accountTypeLabel } from '@/lib/accountTypes';
 import { today } from '@/lib/dates';
 import { formatCents } from '@/lib/money';
+import { matchesFilter } from '@/lib/transactions';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
@@ -31,6 +32,7 @@ function AccountDetails({ account }: { account: Account }) {
   const navigate = useNavigate();
   const [isRenaming, setIsRenaming] = useState(false);
   const [name, setName] = useState(account.name);
+  const [filter, setFilter] = useState('');
 
   const transactions = useQuery({
     queryKey: ['transactions', account.id],
@@ -111,7 +113,25 @@ function AccountDetails({ account }: { account: Account }) {
               {accountTypeLabel(account.type)} · {account.onBudget ? 'Budget' : 'Tracking'}
               {account.closed && ' · Closed'}
             </p>
-            <Money cents={account.balanceCents} className="text-lg" />
+            <section
+              aria-label="Balances"
+              className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm"
+            >
+              <span>
+                <span className="text-muted-foreground">Cleared </span>
+                <Money cents={account.clearedBalanceCents} />
+              </span>
+              <span className="text-muted-foreground">+</span>
+              <span>
+                <span className="text-muted-foreground">Uncleared </span>
+                <Money cents={account.balanceCents - account.clearedBalanceCents} />
+              </span>
+              <span className="text-muted-foreground">=</span>
+              <span>
+                <span className="text-muted-foreground">Working </span>
+                <Money cents={account.balanceCents} className="text-lg font-medium" />
+              </span>
+            </section>
           </div>
         )}
         {!isRenaming && (
@@ -171,7 +191,19 @@ function AccountDetails({ account }: { account: Account }) {
       {transactions.isPending && <p className="text-muted-foreground">Loading…</p>}
       {transactions.isError && <p className="text-negative">{transactions.error.message}</p>}
       {transactions.isSuccess && (
-        <TransactionRegister account={account} transactions={transactions.data} />
+        <div className="space-y-2">
+          <Input
+            aria-label="Filter transactions"
+            placeholder="Filter transactions"
+            className="h-8 max-w-64"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+          />
+          <TransactionRegister
+            transactions={transactions.data.filter((row) => matchesFilter(row, filter))}
+            emptyMessage={filter ? 'No transactions match.' : undefined}
+          />
+        </div>
       )}
     </div>
   );
