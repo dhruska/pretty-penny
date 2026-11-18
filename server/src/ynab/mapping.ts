@@ -124,6 +124,18 @@ export interface ImportNotes {
   skippedSchedules: SkippedSchedule[];
 }
 
+/** An amount YNAB stores with a fraction of a cent, which needs fixing in YNAB before importing. */
+export interface FractionalAmount {
+  kind: 'transaction' | 'scheduled' | 'assigned';
+  /** The transaction's date, the schedule's next date, or the assignment's month (YYYY-MM). */
+  date: string;
+  /** The account, or null for an assignment. */
+  accountName: string | null;
+  /** The payee, transfer or category. */
+  name: string;
+  milliunits: number;
+}
+
 export interface ImportPreview {
   planName: string;
   currency: string | null;
@@ -140,6 +152,8 @@ export interface ImportPreview {
   notes: ImportNotes;
   /** Reasons the plan can't be imported; empty when it can. */
   problems: string[];
+  /** Amounts to fix in YNAB first; any here also add a problem. */
+  fractionalAmounts: FractionalAmount[];
 }
 
 export interface ImportPlan {
@@ -188,11 +202,8 @@ const byDate = <T extends { date: string }>(items: T[]) =>
 /** Works out everything an import will create from a YNAB plan, without touching the database. */
 export function planImport(plan: YnabPlan): ImportPlan {
   const problems: string[] = [];
-  let fractionalAmounts = 0;
-  const cents = (milliunits: number) => {
-    if (milliunits % 10 !== 0) fractionalAmounts += 1;
-    return Math.round(milliunits / 10);
-  };
+  // Amounts with a fraction of a cent are found and listed below, so the import is refused.
+  const cents = (milliunits: number) => Math.round(milliunits / 10);
 
   const decimals = plan.currency_format?.decimal_digits ?? 2;
   if (decimals !== 2) {
@@ -549,9 +560,15 @@ export function planImport(plan: YnabPlan): ImportPlan {
     });
   }
 
-  if (fractionalAmounts > 0) {
+  const fractionalAmounts = findFractionalAmounts(
+    plan,
+    accountById,
+    payeeOf,
+    (id) => keptCategoryIds.has(id) || paymentCategoryIds.has(id),
+  );
+  if (fractionalAmounts.length > 0) {
     problems.push(
-      `${fractionalAmounts} amount${fractionalAmounts === 1 ? ' has' : 's have'} fractions of a cent, which Pretty Penny can’t store.`,
+      `${fractionalAmounts.length === 1 ? 'This amount has' : 'These amounts have'} a fraction of a cent, which Pretty Penny can’t store. Change ${fractionalAmounts.length === 1 ? 'it' : 'them'} to whole cents in YNAB, then connect again.`,
     );
   }
 
@@ -577,6 +594,7 @@ export function planImport(plan: YnabPlan): ImportPlan {
       },
       notes,
       problems,
+      fractionalAmounts,
     },
     accounts,
     groups,
@@ -584,4 +602,96 @@ export function planImport(plan: YnabPlan): ImportPlan {
     transactions,
     schedules,
   };
+}
+
+const hasFraction = (milliunits: number) => milliunits % 10 !== 0;
+
+/** The first amount with a fraction of a cent: the total, or else one of its split lines. */
+const fractionIn = (amount: number, subs: { amount: number; deleted: boolean }[] = []) =>
+  [amount, ...subs.filter((sub) => !sub.deleted).map((sub) => sub.amount)].find(hasFraction);
+
+function groupBy<T>(items: T[], key: (item: T) => string) {
+  const groups = new Map<string, T[]>();
+  for (const item of items) {
+    const group = groups.get(key(item));
+    if (group) group.push(item);
+    else groups.set(key(item), [item]);
+  }
+  return groups;
+}
+
+/**
+ * Amounts with a fraction of a cent that you can edit in YNAB: transactions (listed once per
+ * transfer), scheduled transactions and assignments. Balances are left out, since they follow
+ * from these.
+ */
+function findFractionalAmounts(
+  plan: YnabPlan,
+  accountById: Map<string, PlannedAccount>,
+  payeeOf: (id: string | null | undefined) => string,
+  isImportedCategory: (id: string) => boolean,
+): FractionalAmount[] {
+  const found: FractionalAmount[] = [];
+  const nameOf = (item: { payee_id?: string | null; transfer_account_id?: string | null }) => {
+    const other = item.transfer_account_id ? accountById.get(item.transfer_account_id) : undefined;
+    return other ? `Transfer : ${other.name}` : payeeOf(item.payee_id);
+  };
+
+  const subsOf = groupBy(plan.subtransactions, (sub) => sub.transaction_id);
+  const scheduledSubsOf = groupBy(
+    plan.scheduled_subtransactions,
+    (sub) => sub.scheduled_transaction_id,
+  );
+
+  const listed = new Set<string>();
+  for (const transaction of plan.transactions) {
+    const account = accountById.get(transaction.account_id);
+    if (transaction.deleted || !account) continue;
+    if (transaction.transfer_transaction_id && listed.has(transaction.transfer_transaction_id)) {
+      continue;
+    }
+    const milliunits = fractionIn(transaction.amount, subsOf.get(transaction.id));
+    if (milliunits === undefined) continue;
+    listed.add(transaction.id);
+    found.push({
+      kind: 'transaction',
+      date: transaction.date,
+      accountName: account.name,
+      name: nameOf(transaction),
+      milliunits,
+    });
+  }
+
+  for (const scheduled of plan.scheduled_transactions) {
+    const account = accountById.get(scheduled.account_id);
+    if (scheduled.deleted || !account) continue;
+    const milliunits = fractionIn(scheduled.amount, scheduledSubsOf.get(scheduled.id));
+    if (milliunits === undefined) continue;
+    found.push({
+      kind: 'scheduled',
+      date: scheduled.date_next,
+      accountName: account.name,
+      name: nameOf(scheduled),
+      milliunits,
+    });
+  }
+
+  const categoryName = new Map(plan.categories.map((category) => [category.id, category.name]));
+  for (const month of plan.months) {
+    if (month.deleted) continue;
+    for (const category of month.categories) {
+      if (category.deleted || !hasFraction(category.budgeted) || !isImportedCategory(category.id)) {
+        continue;
+      }
+      found.push({
+        kind: 'assigned',
+        date: month.month.slice(0, 7),
+        accountName: null,
+        name: categoryName.get(category.id) ?? category.name,
+        milliunits: category.budgeted,
+      });
+    }
+  }
+
+  return found.sort((a, b) => a.date.localeCompare(b.date));
 }

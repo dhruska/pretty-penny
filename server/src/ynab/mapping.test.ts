@@ -202,6 +202,7 @@ describe('planImport', () => {
       planName: 'Sample Plan',
       currency: 'USD',
       problems: [],
+      fractionalAmounts: [],
       counts: {
         accounts: 6,
         categoryGroups: 3,
@@ -230,8 +231,51 @@ describe('planImport', () => {
     plan.transactions[0]!.amount = 5_000_005;
     expect(planImport(plan).preview.problems).toEqual([
       expect.stringContaining('uses 0'),
-      '1 amount has fractions of a cent, which Pretty Penny can’t store.',
+      'This amount has a fraction of a cent, which Pretty Penny can’t store. Change it to whole cents in YNAB, then connect again.',
     ]);
+  });
+
+  it('lists each amount with a fraction of a cent that can be fixed in YNAB', () => {
+    const plan = sampleYnabPlan();
+    const find = (id: string) => plan.transactions.find((item) => item.id === id)!;
+    // Both sides of a transfer change together in YNAB, so it's listed once.
+    find('t-mortgage-sep').amount = -1_500_005;
+    find('t-mortgage-sep-in').amount = 1_500_005;
+    plan.subtransactions.find((sub) => sub.id === 'sub-games')!.amount -= 3;
+    plan.scheduled_transactions.find((item) => item.id === 'st-rent')!.amount = -1_200_001;
+    plan.scheduled_subtransactions.find((sub) => sub.id === 'ssub-fun')!.amount -= 7;
+    plan.months[1]!.categories.find((item) => item.id === 'cat-groceries')!.budgeted = 300_009;
+    // Left out: deleted items, categories that aren't imported, and balances.
+    plan.months[1]!.categories.find((item) => item.id === 'cat-fun')!.deleted = true;
+    plan.months[1]!.categories.find((item) => item.id === 'cat-fun')!.budgeted = 100_001;
+    plan.transactions.find((item) => item.deleted)!.amount = 1;
+    plan.accounts[0]!.balance += 1;
+    plan.categories.find((item) => item.id === 'cat-rent')!.balance += 1;
+
+    const { preview } = planImport(plan);
+    expect(preview.problems).toEqual([
+      'These amounts have a fraction of a cent, which Pretty Penny can’t store. Change them to whole cents in YNAB, then connect again.',
+    ]);
+    expect(preview.fractionalAmounts).toEqual([
+      {
+        kind: 'transaction',
+        date: '2026-09-05',
+        accountName: 'Checking',
+        name: 'Transfer : Mortgage',
+        milliunits: -1_500_005,
+      },
+      {
+        kind: 'assigned',
+        date: '2026-10',
+        accountName: null,
+        name: 'Groceries',
+        milliunits: 300_009,
+      },
+      expect.objectContaining({ kind: 'transaction', name: 'Big Box' }),
+      expect.objectContaining({ kind: 'scheduled', date: '2026-11-30', name: 'Landlord' }),
+      expect.objectContaining({ kind: 'scheduled', name: 'Big Box' }),
+    ]);
+    expect(preview.fractionalAmounts[2]!.milliunits % 10).not.toBe(0);
   });
 
   it('moves transactions in categories that aren’t imported to Uncategorized', () => {

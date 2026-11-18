@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { accountTypeLabel } from '@/lib/accountTypes';
 import { today } from '@/lib/dates';
 import {
+  fractionalAmountLine,
   needsAttention,
   noteLines,
   partLine,
@@ -400,11 +401,20 @@ export function ImportPage() {
             <Card title={`Preview of ${preview.planName}`}>
               <Preview preview={preview} />
               {preview.problems.length > 0 ? (
-                <ul role="alert" className="space-y-1 text-sm text-negative">
-                  {preview.problems.map((problem) => (
-                    <li key={problem}>{problem}</li>
-                  ))}
-                </ul>
+                <div role="alert" className="space-y-2 text-sm">
+                  <ul className="space-y-1 text-negative">
+                    {preview.problems.map((problem) => (
+                      <li key={problem}>{problem}</li>
+                    ))}
+                  </ul>
+                  {preview.fractionalAmounts.length > 0 && (
+                    <ul className="max-h-64 list-disc space-y-1 overflow-y-auto pl-5">
+                      {preview.fractionalAmounts.map((item, index) => (
+                        <li key={index}>{fractionalAmountLine(item)}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               ) : (
                 <div className="flex flex-wrap items-center gap-3">
                   <Button

@@ -1,4 +1,4 @@
-import type { ImportNotes, ImportReport, ReadyToAssignPartKey } from '@/api';
+import type { FractionalAmount, ImportNotes, ImportReport, ReadyToAssignPartKey } from '@/api';
 import { formatCents } from './money';
 import { formatMonth } from './months';
 
@@ -34,6 +34,28 @@ export function formatDate(date: string): string {
     day: 'numeric',
     year: 'numeric',
   });
+}
+
+/** YNAB's milliunits as dollars with three decimals, such as -$1,234.567. */
+export function formatMilliunits(milliunits: number): string {
+  const absolute = Math.abs(milliunits);
+  const whole = String(Math.floor(absolute / 1000)).replace(/\B(?=(\d{3})+$)/g, ',');
+  const fraction = String(absolute % 1000).padStart(3, '0');
+  return `${milliunits < 0 ? '-' : ''}$${whole}.${fraction}`;
+}
+
+/** Where to find an amount with a fraction of a cent in YNAB. */
+export function fractionalAmountLine(item: FractionalAmount): string {
+  const amount = formatMilliunits(item.milliunits);
+  if (item.kind === 'assigned') {
+    return `Assigned to ${item.name} in ${formatMonth(item.date)}: ${amount}`;
+  }
+  const name = item.name || 'No payee';
+  const when =
+    item.kind === 'scheduled'
+      ? `Scheduled, next on ${formatDate(item.date)}`
+      : formatDate(item.date);
+  return `${when} · ${item.accountName} · ${name}: ${amount}`;
 }
 
 /** Plain-language lines describing what an import changes or leaves out. */

@@ -2,6 +2,8 @@ import type { ImportNotes, ImportReport } from '@/api';
 import { describe, expect, it } from 'vitest';
 import {
   formatDate,
+  formatMilliunits,
+  fractionalAmountLine,
   needsAttention,
   noteLines,
   partLine,
@@ -80,6 +82,34 @@ describe('formatting', () => {
     };
     expect(skippedScheduleLine(schedule)).toBe('Rent in Checking, next on Dec 1, 2026: Closed.');
     expect(skippedScheduleLine({ ...schedule, payee: '' })).toMatch(/^A scheduled transaction in/);
+  });
+
+  it('shows amounts with fractions of a cent and where to find them in YNAB', () => {
+    expect(formatMilliunits(-1_234_567)).toBe('-$1,234.567');
+    expect(formatMilliunits(5)).toBe('$0.005');
+    const item = {
+      kind: 'transaction' as const,
+      date: '2026-09-05',
+      accountName: 'Checking',
+      name: 'Corner Market',
+      milliunits: -12_345,
+    };
+    expect(fractionalAmountLine(item)).toBe('Sep 5, 2026 · Checking · Corner Market: -$12.345');
+    expect(fractionalAmountLine({ ...item, name: '' })).toBe(
+      'Sep 5, 2026 · Checking · No payee: -$12.345',
+    );
+    expect(fractionalAmountLine({ ...item, kind: 'scheduled' })).toBe(
+      'Scheduled, next on Sep 5, 2026 · Checking · Corner Market: -$12.345',
+    );
+    expect(
+      fractionalAmountLine({
+        kind: 'assigned',
+        date: '2026-10',
+        accountName: null,
+        name: 'Groceries',
+        milliunits: 300_009,
+      }),
+    ).toBe('Assigned to Groceries in October 2026: $300.009');
   });
 
   it('explains each part of a Ready to Assign difference', () => {

@@ -248,6 +248,16 @@ export interface ImportPreview {
   counts: ImportCounts;
   notes: ImportNotes;
   problems: string[];
+  fractionalAmounts: FractionalAmount[];
+}
+
+export interface FractionalAmount {
+  kind: 'transaction' | 'scheduled' | 'assigned';
+  /** A date, or a month (YYYY-MM) for an assignment. */
+  date: string;
+  accountName: string | null;
+  name: string;
+  milliunits: number;
 }
 
 export type ReadyToAssignPartKey =
