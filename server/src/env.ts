@@ -22,3 +22,6 @@ export function getTestDatabaseUrl() {
 }
 
 export const getApiPort = () => Number(process.env.API_PORT ?? 3001);
+
+/** Browser tests point the import at a fake YNAB server; otherwise it uses YNAB's real API. */
+export const getYnabApiUrl = () => process.env.YNAB_API_URL || undefined;

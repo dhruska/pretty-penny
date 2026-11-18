@@ -4,15 +4,22 @@ import type { Db } from './db/client.js';
 import { registerAccountRoutes } from './routes/accounts.js';
 import { registerBudgetRoutes } from './routes/budget.js';
 import { registerCategoryRoutes } from './routes/categories.js';
+import { registerImportRoutes } from './routes/import.js';
 import { registerPayeeRoutes } from './routes/payees.js';
 import { registerReportRoutes } from './routes/reports.js';
 import { registerScheduledRoutes } from './routes/scheduled.js';
 import { registerTransactionRoutes } from './routes/transactions.js';
+import { localToday } from './schedule.js';
+import { createYnabClient, DEFAULT_YNAB_API_URL, type FetchFn } from './ynab/client.js';
 
 interface AppOptions {
   logger?: boolean;
   /** Today's date as YYYY-MM-DD; tests replace it to control when schedules come due. */
   today?: () => string;
+  /** YNAB's API address; browser tests point it at a fake server. */
+  ynabApiUrl?: string;
+  /** Replaces network requests to YNAB in tests. */
+  fetch?: FetchFn;
 }
 
 export function buildApp(db: Db, options: AppOptions = {}) {
@@ -30,6 +37,12 @@ export function buildApp(db: Db, options: AppOptions = {}) {
   registerPayeeRoutes(app, db);
   registerScheduledRoutes(app, db, options.today);
   registerReportRoutes(app, db, options.today);
+  registerImportRoutes(
+    app,
+    db,
+    createYnabClient(options.ynabApiUrl ?? DEFAULT_YNAB_API_URL, options.fetch),
+    options.today ?? localToday,
+  );
 
   return app;
 }

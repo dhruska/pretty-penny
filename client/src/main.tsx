@@ -7,6 +7,7 @@ import './index.css';
 import { AccountPage } from './pages/AccountPage';
 import { AllTransactionsPage } from './pages/AllTransactionsPage';
 import { BudgetPage } from './pages/BudgetPage';
+import { ImportPage } from './pages/ImportPage';
 
 // Reports carry the charting library, so they load only when opened.
 const ReportsPage = lazy(() =>
@@ -24,6 +25,7 @@ createRoot(document.getElementById('root')!).render(
             <Route index element={<BudgetPage />} />
             <Route path="accounts/:id" element={<AccountPage />} />
             <Route path="transactions" element={<AllTransactionsPage />} />
+            <Route path="import" element={<ImportPage />} />
             <Route
               path="reports"
               element={

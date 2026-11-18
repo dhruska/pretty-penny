@@ -329,12 +329,25 @@ export async function prepareTransaction(tx: Executor, accountId: number, body: 
   return { account, other, holder, lines };
 }
 
+export type ClearedStatus = Cleared | 'reconciled';
+
+export interface CreateOptions {
+  /** The schedule this transaction was posted from. */
+  scheduledTransactionId?: number | null;
+  /** Import only: the status to keep, including reconciled, which the API never sets directly. */
+  cleared?: ClearedStatus;
+  /** Import only: marks an account's starting balance. */
+  isStartingBalance?: boolean;
+  /** Import only: the other side of a transfer keeps its own status and memo. */
+  pair?: { cleared: ClearedStatus; memo: string };
+}
+
 /** Creates a transaction, with its transfer pair and category lines, and returns its id. */
 export async function createTransaction(
   tx: Executor,
   accountId: number,
   body: TransactionBody,
-  scheduledTransactionId: number | null = null,
+  options: CreateOptions = {},
 ) {
   const { account, other, holder, lines } = await prepareTransaction(tx, accountId, body);
 
@@ -347,8 +360,9 @@ export async function createTransaction(
       payeeId: other ? null : await resolvePayee(tx, body.payee),
       memo: memoValue,
       amountCents: body.amountCents,
-      cleared: body.cleared ?? defaultCleared(account),
-      scheduledTransactionId,
+      cleared: options.cleared ?? body.cleared ?? defaultCleared(account),
+      isStartingBalance: options.isStartingBalance ?? false,
+      scheduledTransactionId: options.scheduledTransactionId ?? null,
     })
     .returning({ id: transactions.id });
 
@@ -359,6 +373,12 @@ export async function createTransaction(
         amountCents: body.amountCents,
       })
     : null;
+  if (pairId !== null && options.pair) {
+    await tx
+      .update(transactions)
+      .set({ cleared: options.pair.cleared, memo: options.pair.memo.trim() })
+      .where(eq(transactions.id, pairId));
+  }
   await writeLines(tx, { self: row!.id, pair: pairId }, holder, lines);
   return row!.id;
 }

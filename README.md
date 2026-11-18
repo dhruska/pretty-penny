@@ -2,7 +2,7 @@
 
 A personal, self-hosted envelope budgeting app.
 
-This project is in early development. You can currently create accounts, record and categorize transactions, and assign money to categories, with balances that roll over from month to month.
+This project is in early development. You can create budget and tracking accounts, record transactions with splits, transfers and schedules, assign money to categories with balances that roll over from month to month, reconcile accounts, see reports, and import your history from YNAB.
 
 ## Tech stack
 
@@ -66,6 +66,20 @@ Run `nvm use` in new terminal sessions so you're on the project's Node version.
 | `npm run build`         | Type-checks and builds the client and server   |
 | `npm run db:generate`   | Generates a migration from schema changes      |
 | `npm run db:migrate`    | Applies migrations to `DATABASE_URL`           |
+
+## Importing from YNAB
+
+Open **Import from YNAB** in the sidebar. You'll need a personal access token, which you create in YNAB under Account Settings, then Developer Settings. Pretty Penny sends it to YNAB's API to read your plan and never saves it. You can revoke the token in YNAB afterward.
+
+The import shows a preview of what will be created and what changes, such as credit card payment categories, which aren't imported because Pretty Penny treats cards like cash. Afterward it compares every account balance and category with YNAB's figures and explains any differences.
+
+Importing only works on an empty budget. To start over in development, recreate the database. This deletes everything in it.
+
+```sh
+/opt/homebrew/opt/postgresql@17/bin/dropdb pretty_penny_dev
+/opt/homebrew/opt/postgresql@17/bin/createdb pretty_penny_dev
+npm run db:migrate
+```
 
 ## Keeping data private
 

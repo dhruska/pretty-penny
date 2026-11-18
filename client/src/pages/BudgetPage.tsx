@@ -57,6 +57,8 @@ export function BudgetPage() {
     onSuccess: () => queryClient.invalidateQueries(),
   });
 
+  const importStatus = useQuery({ queryKey: ['import-status'], queryFn: api.importStatus });
+
   const readyToAssign = budget.data?.readyToAssignCents ?? 0;
 
   return (
@@ -107,6 +109,15 @@ export function BudgetPage() {
       {budget.isError && <p className="text-negative">{budget.error.message}</p>}
       {assign.isError && <p className="text-sm text-negative">{assign.error.message}</p>}
       {budget.data && <UncategorizedNotice uncategorized={budget.data.uncategorized} />}
+      {importStatus.data?.canImport && (
+        <p className="rounded-lg border bg-card p-3 text-sm">
+          Your budget is empty. Coming from YNAB?{' '}
+          <Link to="/import" className="underline underline-offset-2">
+            Import your plan
+          </Link>
+          , or add accounts and categories to start fresh.
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex gap-2">

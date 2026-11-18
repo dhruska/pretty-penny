@@ -1,13 +1,13 @@
 import { buildApp } from './app.js';
 import { createDb } from './db/client.js';
-import { getApiPort, getDatabaseUrl } from './env.js';
+import { getApiPort, getDatabaseUrl, getYnabApiUrl } from './env.js';
 import { localToday } from './schedule.js';
 import { postDueScheduled } from './scheduled.js';
 
 const HOUR_MS = 60 * 60 * 1000;
 
 const { db } = createDb(getDatabaseUrl());
-const app = buildApp(db, { logger: true });
+const app = buildApp(db, { logger: true, ynabApiUrl: getYnabApiUrl() });
 
 /** Posts scheduled transactions that have come due, as YNAB does on their date. */
 async function postScheduled() {

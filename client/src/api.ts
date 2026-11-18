@@ -196,6 +196,90 @@ export interface Budget {
   groups: CategoryGroup<BudgetCategory>[];
 }
 
+export interface YnabPlanSummary {
+  id: string;
+  name: string;
+  lastModifiedOn: string | null;
+}
+
+export interface ImportAccount {
+  name: string;
+  ynabType: string;
+  type: string;
+  onBudget: boolean;
+  closed: boolean;
+  balanceCents: number;
+}
+
+export interface SkippedSchedule {
+  payee: string;
+  accountName: string;
+  nextDate: string;
+  reason: string;
+}
+
+/** What an import changes or leaves out; see the server's ImportNotes. */
+export interface ImportNotes {
+  paymentCategories: { name: string; assignedCents: number; availableCents: number }[];
+  splitTransfers: number;
+  startingDebtCents: number;
+  uncategorized: number;
+  recategorized: number;
+  unpairedTransfers: number;
+  unapproved: number;
+  flagged: number;
+  skippedSchedules: SkippedSchedule[];
+}
+
+export interface ImportCounts {
+  accounts: number;
+  categoryGroups: number;
+  categories: number;
+  payees: number;
+  transactions: number;
+  scheduled: number;
+  months: number;
+}
+
+export interface ImportPreview {
+  planName: string;
+  currency: string | null;
+  accounts: ImportAccount[];
+  counts: ImportCounts;
+  notes: ImportNotes;
+  problems: string[];
+}
+
+export type ReadyToAssignPartKey =
+  'paymentCategories' | 'startingDebt' | 'uncategorized' | 'creditOverspending' | 'unexplained';
+
+export interface ImportReport {
+  month: string;
+  accounts: {
+    name: string;
+    ynabBalanceCents: number;
+    balanceCents: number;
+    ynabClearedCents: number;
+    clearedCents: number;
+    matches: boolean;
+  }[];
+  readyToAssign: {
+    ynabCents: number;
+    cents: number;
+    parts: { key: ReadyToAssignPartKey; cents: number }[];
+  };
+  categoriesCompared: number;
+  categoryDifferences: {
+    groupName: string;
+    name: string;
+    ynabAvailableCents: number;
+    availableCents: number;
+    firstMonth: string;
+  }[];
+  counts: ImportCounts;
+  notes: ImportNotes;
+}
+
 export type MoveDirection = 'up' | 'down';
 type CategoryChanges = { name?: string; hidden?: boolean };
 
@@ -294,4 +378,11 @@ export const api = {
   moveCategory: (id: number, direction: MoveDirection) =>
     request<void>(`/categories/${id}/move`, 'POST', { direction }),
   deleteCategory: (id: number) => request<void>(`/categories/${id}`, 'DELETE'),
+  importStatus: () => request<{ canImport: boolean }>('/import/status'),
+  listYnabPlans: (token: string) =>
+    request<{ plans: YnabPlanSummary[] }>('/import/ynab/plans', 'POST', { token }),
+  previewYnabImport: (token: string, planId: string) =>
+    request<ImportPreview>('/import/ynab/preview', 'POST', { token, planId }),
+  importYnabPlan: (token: string, planId: string) =>
+    request<ImportReport>('/import/ynab', 'POST', { token, planId }),
 };

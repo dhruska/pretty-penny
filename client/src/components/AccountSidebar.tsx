@@ -118,6 +118,18 @@ export function AccountSidebar() {
       )}
 
       <AddAccountForm />
+
+      <NavLink
+        to="/import"
+        className={({ isActive }) =>
+          cn(
+            'mt-3 block rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted',
+            isActive && 'bg-muted font-medium text-foreground',
+          )
+        }
+      >
+        Import from YNAB
+      </NavLink>
     </aside>
   );
 }

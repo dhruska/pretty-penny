@@ -46,7 +46,9 @@ export async function advanceSchedule(tx: Executor, schedule: Schedule): Promise
 
 /** Posts a schedule's next occurrence as a real transaction and advances the schedule. */
 export async function postNextOccurrence(tx: Executor, schedule: Schedule) {
-  await createTransaction(tx, schedule.accountId, await occurrenceBody(tx, schedule), schedule.id);
+  await createTransaction(tx, schedule.accountId, await occurrenceBody(tx, schedule), {
+    scheduledTransactionId: schedule.id,
+  });
   return advanceSchedule(tx, schedule);
 }
 
