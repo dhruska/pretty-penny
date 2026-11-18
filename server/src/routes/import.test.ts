@@ -387,7 +387,7 @@ describe('YNAB import', () => {
   it('flags differences it can’t explain', async () => {
     const november = ynab.plan.months.find((month) => month.month === '2026-11-01')!;
     november.categories.find((category) => category.id === 'cat-groceries')!.balance = 310_000;
-    november.to_be_budgeted = 3600_000;
+    november.to_be_budgeted = 4800_000; // $3,600 after December’s $1,200
     ynab.plan.accounts.find((account) => account.id === 'acct-visa')!.balance = -60_000;
     // A closed account with no transactions is closed as of the import.
     ynab.plan.accounts.push({ ...ynab.plan.accounts[2]!, id: 'acct-empty', name: 'Never Used' });
@@ -416,6 +416,14 @@ describe('YNAB import', () => {
     expect(report.accounts.find((account) => account.name === 'Never Used')!.matches).toBe(true);
     const accountList = await get<{ name: string; closed: boolean }[]>('/api/accounts');
     expect(accountList.find((account) => account.name === 'Never Used')!.closed).toBe(true);
+  });
+
+  it('only blames credit overspending when YNAB had credit accounts', async () => {
+    // With the card set up as a checking account, YNAB treats its overspending as cash, so a
+    // leftover that lowers ours is unexplained.
+    ynab.plan.accounts.find((account) => account.id === 'acct-visa')!.type = 'checking';
+    const report = (await runImport()).json<ImportReport>();
+    expect(report.readyToAssign.parts.at(-1)).toEqual({ key: 'unexplained', cents: -50_00 });
   });
 
   it('finds the first month a category differed', async () => {

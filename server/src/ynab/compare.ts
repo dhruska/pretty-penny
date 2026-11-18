@@ -49,6 +49,9 @@ export interface ImportReport {
 
 const toCents = (milliunits: number) => Math.round(milliunits / 10);
 
+/** YNAB account types where overspending becomes debt instead of coming from Ready to Assign. */
+const CREDIT_TYPES = ['creditCard', 'lineOfCredit'];
+
 /** The month to compare: the current month, or YNAB's latest month before it. */
 function comparisonMonth(months: string[], currentMonth: string) {
   const eligible = months.filter((month) => month <= currentMonth).sort();
@@ -174,8 +177,15 @@ export async function compareWithYnab(
     }
   }
 
-  // Ready to Assign: explain the difference with the known causes, in order.
-  const ynabCents = ynabMonth ? toCents(ynabMonth.to_be_budgeted) : 0;
+  // Ready to Assign: explain the difference with the known causes, in order. YNAB's API leaves
+  // money assigned in later months out of a month's figure, though YNAB's own Ready to Assign
+  // (and ours) takes it out, so subtract it to match what YNAB shows.
+  const assignedLater = ynabMonths
+    .filter((item) => monthKey(item.month) > month)
+    .flatMap((item) => item.categories)
+    .filter((category) => !category.deleted)
+    .reduce((sum, category) => sum + toCents(category.budgeted), 0);
+  const ynabCents = (ynabMonth ? toCents(ynabMonth.to_be_budgeted) : 0) - assignedLater;
   const difference = ours.readyToAssignCents - ynabCents;
   const notes: ImportNotes = {
     ...plan.preview.notes,
@@ -190,11 +200,20 @@ export async function compareWithYnab(
     { key: 'uncategorized', cents: await uncategorizedShortfall(db, month) },
   ];
   const rest = difference - known.reduce((sum, part) => sum + part.cents, 0);
-  // Credit card overspending can only lower ours, so anything else is unexplained.
+  // Credit overspending can only lower ours, and only happens in budget accounts YNAB treats as
+  // credit, so anything else is unexplained.
+  const hasCreditAccounts = plan.accounts.some(
+    (account) => account.onBudget && CREDIT_TYPES.includes(account.ynabType),
+  );
   const parts = [
     ...known,
     ...(rest !== 0
-      ? [{ key: rest < 0 ? 'creditOverspending' : 'unexplained', cents: rest } as const]
+      ? [
+          {
+            key: rest < 0 && hasCreditAccounts ? 'creditOverspending' : 'unexplained',
+            cents: rest,
+          } as const,
+        ]
       : []),
   ].filter((part) => part.cents !== 0);
 

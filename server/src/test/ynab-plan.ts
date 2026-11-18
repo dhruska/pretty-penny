@@ -14,7 +14,8 @@ import type {
  * A made-up YNAB plan in the shape YNAB's API returns, used by the import tests. Its figures
  * (balances, Available, Ready to Assign) are what YNAB would report for these transactions.
  *
- * Pretty Penny's Ready to Assign for November should come out $10.00 below YNAB's $3,660.00:
+ * Pretty Penny's Ready to Assign for November should come out $10.00 below YNAB's $3,660.00,
+ * which is the API's $4,860.00 for November less $1,200.00 assigned in December:
  *   +$300.00 assigned to the Visa payment category, which isn't imported
  *   −$300.00 Visa starting debt, which Pretty Penny takes from Ready to Assign
  *   +$40.00  October's uncategorized spending, which YNAB took from Ready to Assign
@@ -288,7 +289,8 @@ export function sampleYnabPlan(): YnabPlan {
         'cat-groceries': [300, 80],
         'cat-fun': [100, 20],
       }),
-      month('2026-11-01', 3660, {
+      // As in YNAB's API, November's figure leaves out December's $1,200 assigned to rent.
+      month('2026-11-01', 4860, {
         'cat-rent': [1200, 1200],
         'cat-mortgage': [1500, 1500],
         'cat-groceries': [300, 300],
