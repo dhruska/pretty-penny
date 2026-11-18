@@ -122,7 +122,9 @@ describe('formatting', () => {
 
 describe('noteLines', () => {
   it('always mentions what is never imported', () => {
-    expect(noteLines(quietNotes)).toEqual(['Targets, notes and payee locations aren’t imported.']);
+    expect(noteLines(quietNotes)).toEqual([
+      'Targets, category and account notes, and payee locations aren’t imported. Transaction memos are.',
+    ]);
   });
 
   it('describes each change, in singular or plural', () => {
@@ -146,7 +148,7 @@ describe('noteLines', () => {
       '2 transfers are missing the other side in YNAB and become ordinary transactions.',
       '1 unapproved transaction is imported as usual, since Pretty Penny has no approval step.',
       'Flags on 3 transactions aren’t imported.',
-      'Targets, notes and payee locations aren’t imported.',
+      'Targets, category and account notes, and payee locations aren’t imported. Transaction memos are.',
     ]);
   });
 });

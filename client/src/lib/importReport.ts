@@ -104,7 +104,9 @@ export function noteLines(notes: ImportNotes): string[] {
   if (notes.flagged > 0) {
     lines.push(`Flags on ${plural(notes.flagged, 'transaction', 'transactions')} aren’t imported.`);
   }
-  lines.push('Targets, notes and payee locations aren’t imported.');
+  lines.push(
+    'Targets, category and account notes, and payee locations aren’t imported. Transaction memos are.',
+  );
   return lines;
 }
 
