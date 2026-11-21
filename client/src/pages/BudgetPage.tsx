@@ -12,6 +12,7 @@ import { refresh, updateNow } from '@/lib/queries';
 import { useShortcuts } from '@/lib/shortcuts';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from 'cn';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 
@@ -95,7 +96,7 @@ export function BudgetPage() {
             aria-label="Previous month"
             onClick={() => setSearchParams({ month: shiftMonth(month, -1) })}
           >
-            ‹
+            <ChevronLeft aria-hidden="true" className="size-4" />
           </Button>
           <h2 className="w-44 text-center text-xl font-semibold">{formatMonth(month)}</h2>
           <Button
@@ -104,7 +105,7 @@ export function BudgetPage() {
             aria-label="Next month"
             onClick={() => setSearchParams({ month: shiftMonth(month, 1) })}
           >
-            ›
+            <ChevronRight aria-hidden="true" className="size-4" />
           </Button>
           {month !== thisMonth && (
             <Button variant="ghost" size="sm" onClick={() => setSearchParams({})}>

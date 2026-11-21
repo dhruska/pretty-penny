@@ -7,26 +7,19 @@ import { flagColorVar, flagLabel } from '@/lib/flags';
 import { refresh } from '@/lib/queries';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from 'cn';
+import { Flag } from 'lucide-react';
 import { useId, useState, type FormEvent } from 'react';
 
 /** A flag shape filled with the flag's color, or an outline when there's no flag. */
 export function FlagIcon({ color, className }: { color: FlagColor | null; className?: string }) {
   return (
-    <svg
-      viewBox="0 0 16 16"
+    <Flag
       aria-hidden="true"
+      strokeWidth={1.75}
       className={cn('size-4 shrink-0', className)}
       style={color ? { color: flagColorVar(color) } : undefined}
-    >
-      <path
-        d="M3.5 1.5v13M3.5 2.5h8.5l-2 3 2 3H3.5"
-        fill={color ? 'currentColor' : 'none'}
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-    </svg>
+      fill={color ? 'currentColor' : 'none'}
+    />
   );
 }
 

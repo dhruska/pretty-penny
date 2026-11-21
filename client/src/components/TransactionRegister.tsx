@@ -33,6 +33,7 @@ import {
   type QueryClient,
 } from '@tanstack/react-query';
 import { cn } from 'cn';
+import { Check, Lock } from 'lucide-react';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { ConfirmDelete } from './ConfirmDelete';
 import { FlagPicker } from './FlagPicker';
@@ -171,14 +172,6 @@ function LoadMore({ onLoadMore, isLoading }: { onLoadMore: () => void; isLoading
   );
 }
 
-function LockIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" className="size-3.5 fill-current">
-      <path d="M5 7V5a3 3 0 0 1 6 0v2h.5A1.5 1.5 0 0 1 13 8.5v5a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 3 13.5v-5A1.5 1.5 0 0 1 4.5 7H5Zm1.5 0h3V5a1.5 1.5 0 0 0-3 0v2Z" />
-    </svg>
-  );
-}
-
 function ClearedToggle({ transaction }: { transaction: Transaction }) {
   const isCleared = transaction.cleared === 'cleared';
   const change = useQuickChange(transaction);
@@ -192,7 +185,7 @@ function ClearedToggle({ transaction }: { transaction: Transaction }) {
         title="Reconciled and locked"
         className="inline-flex size-6 items-center justify-center text-positive max-md:m-2"
       >
-        <LockIcon />
+        <Lock aria-hidden="true" className="size-4" strokeWidth={2} />
       </span>
     );
   }
@@ -207,13 +200,13 @@ function ClearedToggle({ transaction }: { transaction: Transaction }) {
       }
       onClick={() => change.mutate({ cleared: isCleared ? 'uncleared' : 'cleared' })}
       className={cn(
-        'inline-flex size-6 cursor-pointer items-center justify-center rounded-full border text-xs font-semibold max-md:m-2',
+        'inline-flex size-5 cursor-pointer items-center justify-center rounded-full border-[1.5px] max-md:m-2.5',
         isCleared
           ? 'border-positive bg-positive text-positive-foreground'
-          : 'border-border text-muted-foreground hover:border-positive',
+          : 'border-muted-foreground/40 text-transparent hover:border-positive hover:text-positive',
       )}
     >
-      C
+      <Check aria-hidden="true" className="size-3" strokeWidth={3} />
     </button>
   );
 }

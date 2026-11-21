@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { safeNext } from '@/lib/signIn';
+import { PennyMark } from '@/components/PennyMark';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router';
@@ -39,7 +40,7 @@ export function LoginPage() {
         className="w-full max-w-sm space-y-4 rounded-lg border bg-card p-6 shadow-sm"
       >
         <div className="flex items-center gap-3">
-          <img src="/icon.svg" alt="" className="size-10" />
+          <PennyMark className="size-10" />
           <h1 className="text-xl font-semibold">Pretty Penny</h1>
         </div>
         <div className="space-y-1">

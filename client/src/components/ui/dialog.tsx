@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { cn } from 'cn';
+import { X } from 'lucide-react';
 import { Dialog as DialogPrimitive } from 'radix-ui';
 
 function Dialog(props: React.ComponentProps<typeof DialogPrimitive.Root>) {
@@ -74,7 +75,7 @@ function DialogHeader({ title, description }: { title: string; description?: str
         aria-label="Close"
         className="-m-1 inline-flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-md text-xl text-muted-foreground hover:bg-muted"
       >
-        ×
+        <X aria-hidden="true" className="size-5" />
       </DialogPrimitive.Close>
     </div>
   );

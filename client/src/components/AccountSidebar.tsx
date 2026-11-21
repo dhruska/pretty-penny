@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from '@/components/ui/dialog';
 import { useState } from 'react';
 import { AddAccountForm } from './AddAccountForm';
+import { PennyMark } from './PennyMark';
 import { Money } from './Money';
 
 const sumBalances = (accounts: Account[]) =>
@@ -216,7 +217,10 @@ export function SidebarContents() {
 export function AccountSidebar() {
   return (
     <aside aria-label="Accounts" className="min-h-svh w-72 shrink-0 border-r bg-sidebar p-4">
-      <h1 className="mb-4 text-lg font-semibold">Pretty Penny</h1>
+      <h1 className="mb-5 flex items-center gap-2.5 px-2 text-base font-bold tracking-tight">
+        <PennyMark />
+        Pretty Penny
+      </h1>
       <SidebarContents />
     </aside>
   );

@@ -6,23 +6,12 @@ import { SHORTCUTS, useShortcuts } from '@/lib/shortcuts';
 import { useIsPhone } from '@/lib/useIsPhone';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from 'cn';
+import { Menu } from 'lucide-react';
 import { Fragment, useState } from 'react';
 import { Link, Navigate, Outlet, useLocation } from 'react-router';
 import { AccountSidebar, SidebarContents } from './AccountSidebar';
+import { PennyMark } from './PennyMark';
 import { Money } from './Money';
-
-function MenuIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="size-5">
-      <path
-        d="M3 5h14M3 10h14M3 15h14"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
 
 /** On phones, a bar with the app name, Ready to Assign, and a menu holding the sidebar. */
 function PhoneTopBar() {
@@ -50,7 +39,7 @@ function PhoneTopBar() {
           aria-label="Menu"
           className="inline-flex size-10 cursor-pointer items-center justify-center rounded-md hover:bg-muted"
         >
-          <MenuIcon />
+          <Menu aria-hidden="true" className="size-5" />
         </DialogTrigger>
         <DialogContent placement="left">
           <DialogHeader title="Pretty Penny" />
@@ -64,8 +53,9 @@ function PhoneTopBar() {
           </div>
         </DialogContent>
       </Dialog>
-      <Link to="/" className="min-w-0 flex-1 truncate font-semibold">
-        Pretty Penny
+      <Link to="/" className="flex min-w-0 flex-1 items-center gap-2 font-semibold">
+        <PennyMark className="size-6" />
+        <span className="truncate">Pretty Penny</span>
       </Link>
       {readyToAssign !== undefined && (
         <Link
