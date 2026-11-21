@@ -1,5 +1,7 @@
 import { api, type Account } from '@/api';
-import { useQuery } from '@tanstack/react-query';
+import { Skeleton } from '@/components/ui/skeleton';
+import { registerQuery } from '@/lib/queries';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from 'cn';
 import { NavLink } from 'react-router';
 import { Button } from '@/components/ui/button';
@@ -12,9 +14,15 @@ const sumBalances = (accounts: Account[]) =>
   accounts.reduce((sum, account) => sum + account.balanceCents, 0);
 
 function AccountLink({ account }: { account: Account }) {
+  const queryClient = useQueryClient();
+  // Starts loading the register on hover or press, so it's usually ready when the page opens.
+  const preload = () => void queryClient.prefetchInfiniteQuery(registerQuery(account.id));
   return (
     <NavLink
       to={`/accounts/${account.id}`}
+      onMouseEnter={preload}
+      onFocus={preload}
+      onTouchStart={preload}
       className={({ isActive }) =>
         cn(
           'flex items-baseline justify-between gap-3 rounded-md px-2 py-2.5 text-sm md:py-1.5 hover:bg-muted',
@@ -113,6 +121,16 @@ export function SidebarContents() {
       </NavLink>
 
       {accounts.isError && <p className="text-sm text-negative">{accounts.error.message}</p>}
+      {accounts.isPending && (
+        <div role="status" aria-label="Loading accounts" className="space-y-2 px-2 py-1">
+          {[0, 1, 2].map((index) => (
+            <div key={index} className="flex justify-between gap-3">
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="h-4 w-16" />
+            </div>
+          ))}
+        </div>
+      )}
 
       <AccountSection title="Budget" accounts={open.filter((account) => account.onBudget)} />
       <AccountSection title="Tracking" accounts={open.filter((account) => !account.onBudget)} />

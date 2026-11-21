@@ -2,10 +2,11 @@ import { api } from '@/api';
 import { signInPath } from '@/lib/signIn';
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from '@/components/ui/dialog';
 import { currentMonth } from '@/lib/months';
+import { SHORTCUTS, useShortcuts } from '@/lib/shortcuts';
 import { useIsPhone } from '@/lib/useIsPhone';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from 'cn';
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Link, Navigate, Outlet, useLocation } from 'react-router';
 import { AccountSidebar, SidebarContents } from './AccountSidebar';
 import { Money } from './Money';
@@ -86,6 +87,31 @@ function PhoneTopBar() {
   );
 }
 
+/** The list of keyboard shortcuts, opened with `?`. */
+function ShortcutsDialog() {
+  const [open, setOpen] = useState(false);
+  useShortcuts({ '?': () => setOpen(true) });
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent>
+        <DialogHeader title="Keyboard shortcuts" />
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+          {SHORTCUTS.map((shortcut) => (
+            <Fragment key={shortcut.keys}>
+              <dt>
+                <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">
+                  {shortcut.keys}
+                </kbd>
+              </dt>
+              <dd className="text-muted-foreground">{shortcut.description}</dd>
+            </Fragment>
+          ))}
+        </dl>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function AppLayout() {
   const isPhone = useIsPhone();
   const session = useQuery({ queryKey: ['session'], queryFn: api.session });
@@ -102,6 +128,7 @@ export function AppLayout() {
       <main className="min-w-0 flex-1 p-4 md:p-6">
         <Outlet />
       </main>
+      <ShortcutsDialog />
     </div>
   );
 }

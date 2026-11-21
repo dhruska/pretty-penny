@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { flagColorVar, flagLabel } from '@/lib/flags';
+import { refresh } from '@/lib/queries';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from 'cn';
 import { useId, useState, type FormEvent } from 'react';
@@ -42,7 +43,7 @@ export function FlagBadge({ color }: { color: FlagColor }) {
   );
 }
 
-function FlagNamesForm({ onDone }: { onDone: () => void }) {
+function FlagNamesForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
   const id = useId();
   const queryClient = useQueryClient();
   const flags = useFlags();
@@ -56,9 +57,9 @@ function FlagNamesForm({ onDone }: { onDone: () => void }) {
         if (name !== (flag.name ?? '')) await api.renameFlag(flag.color, name);
       }
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries();
-      onDone();
+    onSuccess: () => {
+      refresh(queryClient, 'flags');
+      onSaved();
     },
   });
 
@@ -94,7 +95,7 @@ function FlagNamesForm({ onDone }: { onDone: () => void }) {
         <Button type="submit" size="sm" disabled={save.isPending}>
           Save names
         </Button>
-        <Button type="button" variant="ghost" size="sm" onClick={onDone}>
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
           Cancel
         </Button>
       </div>
@@ -147,7 +148,14 @@ export function FlagPicker({ value, onChange, disabled }: FlagPickerProps) {
         className="max-h-(--radix-popover-content-available-height) w-56 overflow-y-auto p-2"
       >
         {editingNames ? (
-          <FlagNamesForm onDone={() => setEditingNames(false)} />
+          <FlagNamesForm
+            // Saving closes the picker; Cancel goes back to the colors.
+            onSaved={() => {
+              setOpen(false);
+              setEditingNames(false);
+            }}
+            onCancel={() => setEditingNames(false)}
+          />
         ) : (
           <div role="group" aria-label="Flag" className="flex flex-col">
             {FLAG_COLORS.map((color) => (

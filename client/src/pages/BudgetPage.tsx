@@ -4,7 +4,12 @@ import { BudgetGrid } from '@/components/BudgetGrid';
 import { CategoryManager } from '@/components/CategoryManager';
 import { Money } from '@/components/Money';
 import { Button } from '@/components/ui/button';
+import { SkeletonRows } from '@/components/ui/skeleton';
 import { currentMonth, formatMonth, isMonth, shiftMonth } from '@/lib/months';
+import { notifyError } from '@/lib/notify';
+import { applyAssignment } from '@/lib/optimistic';
+import { refresh, updateNow } from '@/lib/queries';
+import { useShortcuts } from '@/lib/shortcuts';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from 'cn';
 import { useState } from 'react';
@@ -51,10 +56,29 @@ export function BudgetPage() {
     placeholderData: keepPreviousData,
   });
 
+  // The new amount shows right away; if the server refuses it, it's put back with a message.
   const assign = useMutation({
     mutationFn: (input: { month: string; categoryId: number; assignedCents: number }) =>
       api.setAssignment(input.month, input.categoryId, input.assignedCents),
-    onSuccess: () => queryClient.invalidateQueries(),
+    onMutate: (input) =>
+      updateNow(queryClient, [
+        {
+          queryKey: ['budget', input.month],
+          update: (data: Budget) => applyAssignment(data, input.categoryId, input.assignedCents),
+        },
+      ]),
+    onError: (error, _input, putBack) => {
+      putBack?.();
+      notifyError(error);
+    },
+    // Later months roll the change forward, so they refresh too.
+    onSettled: () => refresh(queryClient, 'budget'),
+  });
+
+  useShortcuts({
+    ArrowLeft: () => setSearchParams({ month: shiftMonth(month, -1) }),
+    ArrowRight: () => setSearchParams({ month: shiftMonth(month, 1) }),
+    t: () => setSearchParams({}),
   });
 
   const importStatus = useQuery({ queryKey: ['import-status'], queryFn: api.importStatus });
@@ -107,7 +131,6 @@ export function BudgetPage() {
       </header>
 
       {budget.isError && <p className="text-negative">{budget.error.message}</p>}
-      {assign.isError && <p className="text-sm text-negative">{assign.error.message}</p>}
       {budget.data && <UncategorizedNotice uncategorized={budget.data.uncategorized} />}
       {importStatus.data?.canImport && (
         <p className="rounded-lg border bg-card p-3 text-sm">
@@ -138,7 +161,7 @@ export function BudgetPage() {
         )}
       </div>
 
-      {budget.isPending && <p className="text-muted-foreground">Loading…</p>}
+      {budget.isPending && <SkeletonRows rows={8} label="Loading the budget" />}
       {isManaging && <CategoryManager />}
       {!isManaging && budget.data && (
         <BudgetGrid

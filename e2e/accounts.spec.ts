@@ -105,12 +105,17 @@ test('deletes a transfer from the other side', async ({ page }) => {
   await expect(sidebarAccount(page, 'Checking')).toContainText('$750.00');
 
   await sidebarAccount(page, 'Checking').click();
+  // Deleting happens at once, with Undo instead of a confirmation, and removes both sides.
   await row(page, 'Transfer: Savings').getByRole('button', { name: 'Delete' }).click();
-  await expect(page.getByRole('alertdialog')).toContainText('matching transaction in Savings');
-  await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
-
   await expect(sidebarAccount(page, 'Checking')).toContainText('$1,000.00');
   await expect(sidebarAccount(page, 'Savings')).toContainText('$0.00');
+
+  // Undo brings both sides back.
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(page.getByText('Transaction restored')).toBeVisible();
+  await expect(sidebarAccount(page, 'Checking')).toContainText('$750.00');
+  await expect(sidebarAccount(page, 'Savings')).toContainText('$250.00');
+  await expect(row(page, 'Transfer: Savings')).toBeVisible();
 });
 
 test('closes an account with a balance and reopens it', async ({ page }) => {

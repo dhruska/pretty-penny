@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { lazy, StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
+import { Toaster } from 'sonner';
 import { BrowserRouter, Route, Routes } from 'react-router';
 import { AppLayout } from './components/AppLayout';
 import './index.css';
@@ -15,11 +16,16 @@ const ReportsPage = lazy(() =>
   import('./pages/ReportsPage').then((module) => ({ default: module.ReportsPage })),
 );
 
-const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+// Data counts as fresh for 30 seconds, so switching pages doesn't refetch what was just loaded.
+// Changes refresh what they affect right away.
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+});
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
+      <Toaster position="bottom-center" closeButton duration={4000} />
       <BrowserRouter>
         <Routes>
           <Route path="login" element={<LoginPage />} />

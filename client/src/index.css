@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
 
 /* Design tokens. Type sizes use Tailwind's default scale; money uses the `tabular-nums` utility. */
 :root {
@@ -76,5 +77,16 @@
 
   body {
     @apply bg-background text-foreground antialiased;
+  }
+}
+
+/* Brief motion for dialogs, popovers and menus, off for anyone who asks for reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

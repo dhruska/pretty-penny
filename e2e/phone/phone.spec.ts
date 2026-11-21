@@ -151,8 +151,8 @@ test('adds, edits, splits, flags and deletes transactions full screen', async ({
   // Deleting is inside the edit view.
   await list.getByRole('button', { name: /^Edit Corner Market/ }).click();
   await page.getByRole('button', { name: 'Delete transaction' }).click();
-  await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
   await expect(list.getByRole('listitem').filter({ hasText: 'Corner Market' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Undo' })).toBeVisible();
 });
 
 test('reconciles and uses the More menu', async ({ page, request }) => {

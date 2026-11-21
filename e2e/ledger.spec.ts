@@ -48,7 +48,7 @@ test('manages an account and its transactions, keeping balances correct', async 
   await expect(editForm).toBeHidden();
 
   await row(page, 'Paycheck').getByRole('button', { name: 'Delete' }).click();
-  await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
+  await expect(page.getByText('Transaction deleted')).toBeVisible();
   await expect(sidebarAccount(page, 'Checking')).toContainText('$970.00');
   await expect(row(page, 'Paycheck')).toHaveCount(0);
 

@@ -9,6 +9,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader } from '@/components/ui/dialog';
 import { frequencyLabel } from '@/lib/frequencies';
+import { notify, notifyError } from '@/lib/notify';
+import { refresh } from '@/lib/queries';
 import { useIsPhone } from '@/lib/useIsPhone';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -52,14 +54,25 @@ export function ScheduledList({ account }: { account: Account }) {
   });
 
   const action = useMutation({
-    mutationFn: (run: () => Promise<unknown>) => run(),
-    onSuccess: () => queryClient.invalidateQueries(),
+    mutationFn: ({ run }: { run: () => Promise<unknown>; done: string }) => run(),
+    onSuccess: (_result, { done }) => {
+      refresh(queryClient, 'transactions');
+      notify(done);
+    },
+    onError: notifyError,
+  });
+  const enterNow = (id: number) => ({ run: () => api.enterScheduledNow(id), done: 'Entered' });
+  const skip = (id: number) => ({ run: () => api.skipScheduled(id), done: 'Skipped this time' });
+  const remove = (id: number) => ({
+    run: () => api.deleteScheduled(id),
+    done: 'Scheduled transaction deleted',
   });
 
   async function saveEdit(id: number, input: TransactionInput, frequency: Frequency | null) {
-    await api.updateScheduled(id, { ...input, frequency: frequency ?? 'never' });
-    await queryClient.invalidateQueries();
+    const { posted } = await api.updateScheduled(id, { ...input, frequency: frequency ?? 'never' });
     setEditingId(null);
+    refresh(queryClient, posted > 0 ? 'transactions' : 'schedules');
+    notify('Scheduled transaction saved');
   }
 
   const isPhone = useIsPhone();
@@ -68,14 +81,13 @@ export function ScheduledList({ account }: { account: Account }) {
 
   if (isPhone) {
     const editing = schedules.data.find((schedule) => schedule.id === editingId);
-    const run = (task: () => Promise<unknown>) => {
+    const run = (task: { run: () => Promise<unknown>; done: string }) => {
       action.mutate(task);
       setEditingId(null);
     };
     return (
       <section aria-label="Scheduled transactions" className="space-y-2">
         <h3 className="text-sm font-medium text-muted-foreground">Scheduled</h3>
-        {action.isError && <p className="text-sm text-negative">{action.error.message}</p>}
         <ul className="divide-y rounded-lg border border-dashed bg-muted/40">
           {schedules.data.map((schedule) => (
             <li key={schedule.id}>
@@ -111,7 +123,7 @@ export function ScheduledList({ account }: { account: Account }) {
                   variant="secondary"
                   size="sm"
                   disabled={action.isPending}
-                  onClick={() => run(() => api.enterScheduledNow(editing.id))}
+                  onClick={() => run(enterNow(editing.id))}
                 >
                   Enter now
                 </Button>
@@ -119,7 +131,7 @@ export function ScheduledList({ account }: { account: Account }) {
                   variant="secondary"
                   size="sm"
                   disabled={action.isPending}
-                  onClick={() => run(() => api.skipScheduled(editing.id))}
+                  onClick={() => run(skip(editing.id))}
                 >
                   Skip
                 </Button>
@@ -127,7 +139,7 @@ export function ScheduledList({ account }: { account: Account }) {
                   triggerLabel="Delete"
                   title="Delete this scheduled transaction?"
                   description="Future occurrences won't be entered. Transactions it already entered stay."
-                  onConfirm={() => run(() => api.deleteScheduled(editing.id))}
+                  onConfirm={() => run(remove(editing.id))}
                 />
               </div>
               <TransactionForm
@@ -150,7 +162,6 @@ export function ScheduledList({ account }: { account: Account }) {
   return (
     <section aria-label="Scheduled transactions" className="space-y-2">
       <h3 className="text-sm font-medium text-muted-foreground">Scheduled</h3>
-      {action.isError && <p className="text-sm text-negative">{action.error.message}</p>}
       <div className="relative overflow-x-auto rounded-lg border border-dashed bg-muted/40">
         <table className="w-full min-w-[46rem] text-sm">
           <tbody>
@@ -194,7 +205,7 @@ export function ScheduledList({ account }: { account: Account }) {
                       variant="ghost"
                       size="sm"
                       disabled={action.isPending}
-                      onClick={() => action.mutate(() => api.enterScheduledNow(schedule.id))}
+                      onClick={() => action.mutate(enterNow(schedule.id))}
                     >
                       Enter now
                     </Button>
@@ -202,7 +213,7 @@ export function ScheduledList({ account }: { account: Account }) {
                       variant="ghost"
                       size="sm"
                       disabled={action.isPending}
-                      onClick={() => action.mutate(() => api.skipScheduled(schedule.id))}
+                      onClick={() => action.mutate(skip(schedule.id))}
                     >
                       Skip
                     </Button>
@@ -210,7 +221,7 @@ export function ScheduledList({ account }: { account: Account }) {
                       triggerLabel="Delete"
                       title="Delete this scheduled transaction?"
                       description="Future occurrences won't be entered. Transactions it already entered stay."
-                      onConfirm={() => action.mutate(() => api.deleteScheduled(schedule.id))}
+                      onConfirm={() => action.mutate(remove(schedule.id))}
                     />
                   </td>
                 </tr>

@@ -60,6 +60,12 @@ export interface Transaction {
   runningBalanceCents?: number;
 }
 
+/** What the server returns from a delete, passed back as is to undo it. */
+export interface DeletedTransaction {
+  snapshot: object;
+  signature: string;
+}
+
 export interface Payee {
   id: number;
   name: string;
@@ -362,8 +368,11 @@ export const api = {
       date,
     }),
   deleteAccount: (id: number) => request<void>(`/accounts/${id}`, 'DELETE'),
-  listTransactions: (accountId: number) =>
-    request<Transaction[]>(`/accounts/${accountId}/transactions`),
+  /** A page of an account's register, newest first, continuing after `before`. */
+  listTransactions: (accountId: number, page: { limit: number; before?: number }) =>
+    request<Transaction[]>(
+      `/accounts/${accountId}/transactions?limit=${page.limit}${page.before ? `&before=${page.before}` : ''}`,
+    ),
   createTransaction: (accountId: number, input: TransactionInput) =>
     request<void>(`/accounts/${accountId}/transactions`, 'POST', input),
   updateTransaction: (
@@ -396,8 +405,11 @@ export const api = {
   netWorthReport: (range: URLSearchParams) =>
     request<NetWorthPoint[]>(`/reports/net-worth?${range}`),
   /** The delete dialog is the warning for reconciled transactions, so the UI always confirms. */
+  /** Returns what Undo needs to put the transaction back. */
   deleteTransaction: (id: number) =>
-    request<void>(`/transactions/${id}?confirmReconciled=true`, 'DELETE'),
+    request<{ undo: DeletedTransaction }>(`/transactions/${id}?confirmReconciled=true`, 'DELETE'),
+  restoreTransaction: (undo: DeletedTransaction) =>
+    request<{ restored: number[] }>('/transactions/restore', 'POST', undo),
   getBudget: (month: string, currentMonth: string) =>
     request<Budget>(`/budget?month=${month}&currentMonth=${currentMonth}`),
   setAssignment: (month: string, categoryId: number, assignedCents: number) =>

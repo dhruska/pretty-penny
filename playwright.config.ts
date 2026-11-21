@@ -16,7 +16,12 @@ export default defineConfig({
   workers: 1,
   // Signs in once with the test password; every test starts with that session.
   globalSetup: './e2e/global-setup.ts',
-  use: { baseURL: `http://localhost:${WEB_PORT}`, storageState: 'e2e/.auth/signed-in.json' },
+  use: {
+    baseURL: `http://localhost:${WEB_PORT}`,
+    storageState: 'e2e/.auth/signed-in.json',
+    // Like a user who turns animation off: closing menus leave at once. One test checks motion.
+    reducedMotion: 'reduce',
+  },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] }, testIgnore: '**/phone/**' },
     {

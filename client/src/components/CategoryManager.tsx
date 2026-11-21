@@ -1,3 +1,5 @@
+import { SkeletonRows } from '@/components/ui/skeleton';
+import { refresh } from '@/lib/queries';
 import { api, type MoveDirection } from '@/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -169,10 +171,10 @@ export function CategoryManager() {
   const categories = useQuery({ queryKey: ['categories'], queryFn: api.listCategories });
   const action = useMutation({
     mutationFn: (run: () => Promise<unknown>) => run(),
-    onSuccess: () => queryClient.invalidateQueries(),
+    onSuccess: () => refresh(queryClient, 'categories'),
   });
 
-  if (categories.isPending) return <p className="text-muted-foreground">Loading…</p>;
+  if (categories.isPending) return <SkeletonRows rows={6} label="Loading categories" />;
   if (categories.isError) return <p className="text-negative">{categories.error.message}</p>;
 
   const { groups } = categories.data;

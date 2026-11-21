@@ -5,6 +5,9 @@ import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { AUTO_ASSIGN_OPTIONS, autoAssignTarget } from '@/lib/autoAssign';
 import { centsToInput, formatCents, parseDollars } from '@/lib/money';
+import { notify, notifyError } from '@/lib/notify';
+import { applyMove } from '@/lib/optimistic';
+import { refresh, updateNow } from '@/lib/queries';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from 'cn';
 import { useId, useState, type FormEvent } from 'react';
@@ -13,19 +16,44 @@ import { Money } from './Money';
 
 type Move = { fromCategoryId: number | null; toCategoryId: number | null; amountCents: number };
 
-/** Moves money and sets assignments for a month, refreshing all data afterward. */
+/**
+ * Moves money and sets assignments for a month. A move shows right away, and is put back with a
+ * message if the server refuses it.
+ */
 export function useBudgetActions(month: string, onDone?: () => void) {
   const queryClient = useQueryClient();
-  const onSuccess = async () => {
-    await queryClient.invalidateQueries();
-    onDone?.();
-  };
+  const settle = () => refresh(queryClient, 'budget');
 
   return {
-    move: useMutation({ mutationFn: (move: Move) => api.moveMoney(month, move), onSuccess }),
+    move: useMutation({
+      mutationFn: (move: Move & { toName: string }) =>
+        api.moveMoney(month, {
+          fromCategoryId: move.fromCategoryId,
+          toCategoryId: move.toCategoryId,
+          amountCents: move.amountCents,
+        }),
+      onMutate: async (move) => {
+        const putBack = await updateNow(queryClient, [
+          { queryKey: ['budget', month], update: (data: Budget) => applyMove(data, move) },
+        ]);
+        onDone?.();
+        return putBack;
+      },
+      onSuccess: (_result, move) =>
+        notify(`Moved ${formatCents(move.amountCents)} to ${move.toName}`),
+      onError: (error, _move, putBack) => {
+        putBack?.();
+        notifyError(error);
+      },
+      onSettled: settle,
+    }),
     setAssignments: useMutation({
       mutationFn: (assignments: AssignmentInput[]) => api.setAssignments(month, assignments),
-      onSuccess,
+      onSuccess: () => {
+        settle();
+        onDone?.();
+      },
+      onError: notifyError,
     }),
   };
 }
@@ -119,7 +147,6 @@ export function CategoryMoneyPanel({
   showHeading?: boolean;
 }) {
   const { move, setAssignments } = useBudgetActions(budget.month, onDone);
-  const error = move.error ?? setAssignments.error;
 
   const others = budget.groups
     .flatMap((group) => group.categories)
@@ -152,8 +179,6 @@ export function CategoryMoneyPanel({
         </div>
       )}
 
-      {error && <p className="text-negative">{error.message}</p>}
-
       {category.availableCents > 0 && (
         <MoveForm
           title="Move money out"
@@ -163,7 +188,12 @@ export function CategoryMoneyPanel({
           options={destinations}
           isPending={move.isPending}
           onMove={(amountCents, toCategoryId) =>
-            move.mutate({ fromCategoryId: category.id, toCategoryId, amountCents })
+            move.mutate({
+              fromCategoryId: category.id,
+              toCategoryId,
+              amountCents,
+              toName: others.find((other) => other.id === toCategoryId)?.name ?? 'Ready to Assign',
+            })
           }
         />
       )}
@@ -176,7 +206,12 @@ export function CategoryMoneyPanel({
         options={sources}
         isPending={move.isPending}
         onMove={(amountCents, fromCategoryId) =>
-          move.mutate({ fromCategoryId, toCategoryId: category.id, amountCents })
+          move.mutate({
+            fromCategoryId,
+            toCategoryId: category.id,
+            amountCents,
+            toName: category.name,
+          })
         }
       />
 

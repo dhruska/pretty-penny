@@ -1,7 +1,10 @@
 import {
   api,
   isReconciledError,
+  type Account,
+  type ClearedStatus,
   type FlagColor,
+  type SearchResults,
   type Transaction,
   type TransactionInput,
 } from '@/api';
@@ -17,11 +20,20 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader } from '@/components/ui/dialog';
+import { notify, notifyDeleted, notifyError } from '@/lib/notify';
+import { applyCleared, updateInPages, updateInResults } from '@/lib/optimistic';
+import { refresh, updateNow } from '@/lib/queries';
 import { payeeLabel } from '@/lib/transactions';
 import { useIsPhone } from '@/lib/useIsPhone';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type InfiniteData,
+  type QueryClient,
+} from '@tanstack/react-query';
 import { cn } from 'cn';
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { ConfirmDelete } from './ConfirmDelete';
 import { FlagPicker } from './FlagPicker';
 import { Money } from './Money';
@@ -33,7 +45,130 @@ interface TransactionRegisterProps {
   transactions: Transaction[];
   /** Shows each transaction's account, for lists spanning several accounts. */
   showAccount?: boolean;
+  /** Running balances, shown by default in a single account's full register. */
+  showBalance?: boolean;
   emptyMessage?: string;
+  /** More transactions to load, which happens as the end of the list comes into view. */
+  hasMore?: boolean;
+  onLoadMore?: () => void;
+  isLoadingMore?: boolean;
+}
+
+type Pages = InfiniteData<Transaction[], number | undefined>;
+
+/**
+ * Changes a transaction's cleared status or flag on screen right away, then on the server; if
+ * the server refuses, the change is put back with a message.
+ */
+function useQuickChange(transaction: Transaction) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (change: {
+      cleared?: Exclude<ClearedStatus, 'reconciled'>;
+      flag?: FlagColor | null;
+    }) => api.updateTransaction(transaction.id, change),
+    onMutate: (change) =>
+      updateNow(queryClient, [
+        {
+          queryKey: ['transactions'],
+          update: (data: Pages) => updateInPages(data, transaction.id, change),
+        },
+        {
+          queryKey: ['search'],
+          update: (data: SearchResults) => updateInResults(data, transaction.id, change),
+        },
+        ...(change.cleared
+          ? [
+              {
+                queryKey: ['accounts'],
+                update: (data: Account[]) => applyCleared(data, transaction, change.cleared!),
+              },
+            ]
+          : []),
+      ]),
+    onError: (error, _change, putBack) => {
+      putBack?.();
+      notifyError(error);
+    },
+    onSettled: () => refresh(queryClient, 'quickChanges'),
+  });
+}
+
+/** Deletes a transaction, taking it off screen right away and offering Undo. */
+export function useDeleteTransaction() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deleteTransaction(id),
+    onMutate: (id) => removeNow(queryClient, id),
+    onSuccess: ({ undo }) => notifyDeleted(queryClient, undo),
+    onError: (error, _id, putBack) => {
+      putBack?.();
+      notifyError(error);
+    },
+    onSettled: () => refresh(queryClient, 'transactions'),
+  });
+}
+
+const removeNow = (queryClient: QueryClient, id: number) =>
+  updateNow(queryClient, [
+    { queryKey: ['transactions'], update: (data: Pages) => updateInPages(data, id, null) },
+    { queryKey: ['search'], update: (data: SearchResults) => updateInResults(data, id, null) },
+  ]);
+
+/**
+ * Delete, at once with Undo. A reconciled transaction still asks first, since deleting it can
+ * make the account stop matching the bank.
+ */
+function DeleteButton({
+  transaction,
+  label = 'Delete',
+  onDelete,
+}: {
+  transaction: Transaction;
+  label?: string;
+  onDelete: () => void;
+}) {
+  if (transaction.cleared === 'reconciled') {
+    return (
+      <ConfirmDelete
+        triggerLabel={label}
+        title="Delete this transaction?"
+        description={deleteDescription(transaction)}
+        onConfirm={onDelete}
+      />
+    );
+  }
+  return (
+    <Button variant="ghost" size="sm" className="text-negative" onClick={onDelete}>
+      {label}
+    </Button>
+  );
+}
+
+/** Loads more as the end of the list comes into view, with a button as a fallback. */
+function LoadMore({ onLoadMore, isLoading }: { onLoadMore: () => void; isLoading: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const latest = useRef(onLoadMore);
+  useEffect(() => {
+    latest.current = onLoadMore;
+  });
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) latest.current();
+      },
+      { rootMargin: '600px' },
+    );
+    if (ref.current) observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <div ref={ref} className="flex justify-center py-3">
+      <Button variant="ghost" size="sm" disabled={isLoading} onClick={onLoadMore}>
+        {isLoading ? 'Loading more…' : 'Load more'}
+      </Button>
+    </div>
+  );
 }
 
 function LockIcon() {
@@ -45,13 +180,8 @@ function LockIcon() {
 }
 
 function ClearedToggle({ transaction }: { transaction: Transaction }) {
-  const queryClient = useQueryClient();
   const isCleared = transaction.cleared === 'cleared';
-  const toggle = useMutation({
-    mutationFn: () =>
-      api.updateTransaction(transaction.id, { cleared: isCleared ? 'uncleared' : 'cleared' }),
-    onSuccess: () => queryClient.invalidateQueries(),
-  });
+  const change = useQuickChange(transaction);
 
   // As in YNAB, reconciled transactions are locked and can't go back to cleared or uncleared.
   if (transaction.cleared === 'reconciled') {
@@ -75,8 +205,7 @@ function ClearedToggle({ transaction }: { transaction: Transaction }) {
       title={
         isCleared ? 'Cleared. Select to mark uncleared.' : 'Uncleared. Select to mark cleared.'
       }
-      disabled={toggle.isPending}
-      onClick={() => toggle.mutate()}
+      onClick={() => change.mutate({ cleared: isCleared ? 'uncleared' : 'cleared' })}
       className={cn(
         'inline-flex size-6 cursor-pointer items-center justify-center rounded-full border text-xs font-semibold max-md:m-2',
         isCleared
@@ -92,24 +221,18 @@ function ClearedToggle({ transaction }: { transaction: Transaction }) {
 /** A transaction's flag, changed right in the register. Flags don't affect balances, so even a
  * reconciled transaction changes without asking. */
 function RegisterFlag({ transaction }: { transaction: Transaction }) {
-  const queryClient = useQueryClient();
-  const setFlag = useMutation({
-    mutationFn: (flag: FlagColor | null) => api.updateTransaction(transaction.id, { flag }),
-    onSuccess: () => queryClient.invalidateQueries(),
-  });
-  return (
-    <FlagPicker
-      value={transaction.flag}
-      disabled={setFlag.isPending}
-      onChange={(flag) => setFlag.mutate(flag)}
-    />
-  );
+  const change = useQuickChange(transaction);
+  return <FlagPicker value={transaction.flag} onChange={(flag) => change.mutate({ flag })} />;
 }
 
 export function TransactionRegister({
   transactions,
   showAccount = false,
+  showBalance: showBalanceProp,
   emptyMessage = 'No transactions yet.',
+  hasMore = false,
+  onLoadMore,
+  isLoadingMore = false,
 }: TransactionRegisterProps) {
   const queryClient = useQueryClient();
   const isPhone = useIsPhone();
@@ -126,13 +249,10 @@ export function TransactionRegister({
     });
   }
   // Running balances only mean something within one account, where the account column isn't needed.
-  const showBalance = !showAccount;
+  const showBalance = showBalanceProp ?? !showAccount;
   const columnCount = 9;
 
-  const deleteTransaction = useMutation({
-    mutationFn: api.deleteTransaction,
-    onSuccess: () => queryClient.invalidateQueries(),
-  });
+  const deleteTransaction = useDeleteTransaction();
 
   // Resolves the open "Save anyway?" question for a reconciled transaction.
   const [answerConfirm, setAnswerConfirm] = useState<((confirmed: boolean) => void) | null>(null);
@@ -156,8 +276,10 @@ export function TransactionRegister({
       }
       await api.updateTransaction(id, { ...input, confirmReconciled: true });
     }
-    await queryClient.invalidateQueries();
+    // The form closes as soon as the save succeeds; the rest refreshes in the background.
     setEditingId(null);
+    notify('Transaction saved');
+    refresh(queryClient, 'transactions');
   }
 
   if (transactions.length === 0) {
@@ -186,9 +308,6 @@ export function TransactionRegister({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      {deleteTransaction.isError && (
-        <p className="mb-2 text-sm text-negative">{deleteTransaction.error.message}</p>
-      )}
       {isPhone ? (
         <PhoneRegister
           transactions={transactions}
@@ -301,11 +420,9 @@ export function TransactionRegister({
                         >
                           Edit
                         </Button>
-                        <ConfirmDelete
-                          triggerLabel="Delete"
-                          title="Delete this transaction?"
-                          description={deleteDescription(transaction)}
-                          onConfirm={() => deleteTransaction.mutate(transaction.id)}
+                        <DeleteButton
+                          transaction={transaction}
+                          onDelete={() => deleteTransaction.mutate(transaction.id)}
                         />
                       </td>
                     </tr>
@@ -341,6 +458,7 @@ export function TransactionRegister({
           </table>
         </div>
       )}
+      {hasMore && onLoadMore && <LoadMore onLoadMore={onLoadMore} isLoading={isLoadingMore} />}
     </>
   );
 }
@@ -435,11 +553,10 @@ function PhoneRegister({
               onCancel={() => onEdit(null)}
             />
             <div className="mt-6 border-t pt-4">
-              <ConfirmDelete
-                triggerLabel="Delete transaction"
-                title="Delete this transaction?"
-                description={deleteDescription(editing)}
-                onConfirm={() => onDelete(editing.id)}
+              <DeleteButton
+                transaction={editing}
+                label="Delete transaction"
+                onDelete={() => onDelete(editing.id)}
               />
             </div>
           </DialogContent>

@@ -27,7 +27,6 @@ export function AutoAssignMenu({ budget }: { budget: Budget }) {
         <p className="pb-1 text-xs text-muted-foreground">
           Assigns money to every visible category this month.
         </p>
-        {setAssignments.isError && <p className="text-negative">{setAssignments.error.message}</p>}
         {AUTO_ASSIGN_OPTIONS.map((option) => {
           const plan = planAutoAssign(visible, option.value);
           return (

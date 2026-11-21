@@ -3,6 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { today } from '@/lib/dates';
+import { notify } from '@/lib/notify';
+import { refresh } from '@/lib/queries';
 import { parseDollars } from '@/lib/money';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
@@ -19,8 +21,9 @@ export function AddAccountForm({ onDone }: { onDone?: () => void }) {
 
   const createAccount = useMutation({
     mutationFn: api.createAccount,
-    onSuccess: async (account) => {
-      await queryClient.invalidateQueries();
+    onSuccess: (account) => {
+      refresh(queryClient, 'accounts');
+      notify(`${account.name} added`);
       setName('');
       setStartingBalance('');
       onDone?.();

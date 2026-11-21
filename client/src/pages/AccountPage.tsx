@@ -14,9 +14,18 @@ import { useIsPhone } from '@/lib/useIsPhone';
 import { accountTypeLabel } from '@/lib/accountTypes';
 import { today } from '@/lib/dates';
 import { formatCents } from '@/lib/money';
-import { matchesFilter } from '@/lib/transactions';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { notify } from '@/lib/notify';
+import { refresh, registerQuery } from '@/lib/queries';
+import { useShortcuts } from '@/lib/shortcuts';
+import { SkeletonRows } from '@/components/ui/skeleton';
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import { useDeferredValue, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
 
 export function AccountPage() {
@@ -41,18 +50,38 @@ function AccountDetails({ account }: { account: Account }) {
   const isPhone = useIsPhone();
   const [isAdding, setIsAdding] = useState(false);
 
-  const transactions = useQuery({
-    queryKey: ['transactions', account.id],
-    queryFn: () => api.listTransactions(account.id),
+  // The newest transactions first, with more loading as you scroll.
+  const transactions = useInfiniteQuery(registerQuery(account.id));
+  const rows = transactions.data?.pages.flat() ?? [];
+
+  // Filtering searches the whole account on the server, so older transactions are found too.
+  const query = useDeferredValue(filter.trim());
+  const filtered = useQuery({
+    queryKey: ['search', 'account', account.id, query],
+    queryFn: () =>
+      api.searchTransactions(new URLSearchParams({ accountId: String(account.id), q: query })),
+    enabled: query !== '',
+    placeholderData: keepPreviousData,
   });
 
-  const invalidate = () => queryClient.invalidateQueries();
+  const addFormRef = useRef<HTMLElement>(null);
+  const filterRef = useRef<HTMLInputElement>(null);
+  useShortcuts({
+    n: () => {
+      if (account.closed) return;
+      if (isPhone) setIsAdding(true);
+      else addFormRef.current?.querySelector<HTMLInputElement>('input[list]')?.focus();
+    },
+    '/': () => filterRef.current?.focus(),
+  });
+
+  const changed = () => refresh(queryClient, 'accounts');
 
   const update = useMutation({
     mutationFn: (changes: { name?: string; type?: string }) =>
       api.updateAccount(account.id, changes),
-    onSuccess: async () => {
-      await invalidate();
+    onSuccess: () => {
+      changed();
       setIsRenaming(false);
     },
   });
@@ -60,25 +89,34 @@ function AccountDetails({ account }: { account: Account }) {
   const setClosed = useMutation({
     mutationFn: (close: boolean) =>
       close ? api.closeAccount(account.id, today()) : api.reopenAccount(account.id),
-    onSuccess: invalidate,
+    onSuccess: (_result, close) => {
+      changed();
+      notify(close ? `${account.name} closed` : `${account.name} reopened`);
+    },
   });
 
   const deleteAccount = useMutation({
     mutationFn: () => api.deleteAccount(account.id),
-    onSuccess: async () => {
+    onSuccess: () => {
       navigate('/');
-      await invalidate();
+      changed();
+      notify(`${account.name} deleted`);
     },
   });
 
   async function addTransaction(input: TransactionInput, frequency: Frequency | null) {
     // As in YNAB, a repeating or future-dated transaction becomes a scheduled transaction.
     if (frequency !== null || input.date > today()) {
-      await api.createScheduled(account.id, { ...input, frequency: frequency ?? 'never' });
+      const { posted } = await api.createScheduled(account.id, {
+        ...input,
+        frequency: frequency ?? 'never',
+      });
+      notify(posted > 0 ? 'Transaction added, and set to repeat' : 'Transaction scheduled');
     } else {
       await api.createTransaction(account.id, input);
+      notify('Transaction added');
     }
-    await invalidate();
+    refresh(queryClient, 'transactions');
   }
 
   function handleRename(event: FormEvent) {
@@ -251,7 +289,7 @@ function AccountDetails({ account }: { account: Account }) {
           </DialogContent>
         </Dialog>
       ) : (
-        <section className="rounded-lg border bg-card p-3">
+        <section ref={addFormRef} className="rounded-lg border bg-card p-3">
           <TransactionForm
             label="Add transaction"
             submitLabel="Add transaction"
@@ -264,21 +302,35 @@ function AccountDetails({ account }: { account: Account }) {
 
       <ScheduledList account={account} />
 
-      {transactions.isPending && <p className="text-muted-foreground">Loading…</p>}
+      {transactions.isPending && <SkeletonRows rows={8} label="Loading transactions" />}
       {transactions.isError && <p className="text-negative">{transactions.error.message}</p>}
       {transactions.isSuccess && (
         <div className="space-y-2">
           <Input
+            ref={filterRef}
             aria-label="Filter transactions"
             placeholder="Filter transactions"
             className="h-8 max-w-64"
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
           />
-          <TransactionRegister
-            transactions={transactions.data.filter((row) => matchesFilter(row, filter))}
-            emptyMessage={filter ? 'No transactions match.' : undefined}
-          />
+          {query === '' ? (
+            <TransactionRegister
+              transactions={rows}
+              hasMore={transactions.hasNextPage}
+              isLoadingMore={transactions.isFetchingNextPage}
+              onLoadMore={() => {
+                if (!transactions.isFetchingNextPage) void transactions.fetchNextPage();
+              }}
+            />
+          ) : (
+            // Matches come from the whole account, so running balances aren't shown.
+            <TransactionRegister
+              transactions={filtered.data?.transactions ?? []}
+              showBalance={false}
+              emptyMessage={filtered.isPending ? 'Searching…' : 'No transactions match.'}
+            />
+          )}
         </div>
       )}
     </div>

@@ -13,6 +13,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { today } from '@/lib/dates';
+import { notify } from '@/lib/notify';
+import { refresh } from '@/lib/queries';
 import { formatCents, parseDollars } from '@/lib/money';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
@@ -28,9 +30,14 @@ export function ReconcileButton({ account }: { account: Account }) {
   const reconcile = useMutation({
     mutationFn: (bankBalanceCents: number) =>
       api.reconcileAccount(account.id, bankBalanceCents, today()),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries();
+    onSuccess: ({ adjustmentCents }) => {
       setIsOpen(false);
+      refresh(queryClient, 'transactions');
+      notify(
+        adjustmentCents === 0
+          ? `${account.name} reconciled`
+          : `${account.name} reconciled, with a ${formatCents(adjustmentCents)} adjustment`,
+      );
     },
   });
 

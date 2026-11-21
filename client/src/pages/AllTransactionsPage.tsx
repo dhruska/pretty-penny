@@ -5,7 +5,9 @@ import { Money } from '@/components/Money';
 import { TransactionRegister } from '@/components/TransactionRegister';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SkeletonRows } from '@/components/ui/skeleton';
 import { flagLabel } from '@/lib/flags';
+import { useShortcuts } from '@/lib/shortcuts';
 import { currentMonth, monthRange, shiftMonth } from '@/lib/months';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useDeferredValue, useId, useRef, useState, type ReactNode } from 'react';
@@ -41,6 +43,8 @@ export function AllTransactionsPage() {
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts });
   const categories = useQuery({ queryKey: ['categories'], queryFn: api.listCategories });
   const flags = useFlags();
+  const searchRef = useRef<HTMLInputElement>(null);
+  useShortcuts({ '/': () => searchRef.current?.focus() });
 
   // The filters live in state so quick successive changes never work from stale values, and are
   // copied into the URL so filtered links, such as from the budget's uncategorized notice, work.
@@ -104,6 +108,7 @@ export function AllTransactionsPage() {
           <Field label="Search" id={`${id}-q`}>
             <Input
               id={`${id}-q`}
+              ref={searchRef}
               type="search"
               placeholder="Payee, category, memo…"
               value={filters.q ?? ''}
@@ -214,7 +219,7 @@ export function AllTransactionsPage() {
       </section>
 
       {results.isError && <p className="text-negative">{results.error.message}</p>}
-      {results.isPending && <p className="text-muted-foreground">Loading…</p>}
+      {results.isPending && <SkeletonRows rows={8} label="Loading transactions" />}
       {results.data && (
         <>
           <p aria-label="Results summary" className="text-sm text-muted-foreground">
