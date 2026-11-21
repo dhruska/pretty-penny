@@ -23,6 +23,7 @@ import { Dialog, DialogContent, DialogHeader } from '@/components/ui/dialog';
 import { notify, notifyDeleted, notifyError } from '@/lib/notify';
 import { applyCleared, updateInPages, updateInResults } from '@/lib/optimistic';
 import { refresh, updateNow } from '@/lib/queries';
+import { shortDate } from '@/lib/dates';
 import { payeeLabel } from '@/lib/transactions';
 import { useIsPhone } from '@/lib/useIsPhone';
 import {
@@ -315,24 +316,22 @@ export function TransactionRegister({
         />
       ) : (
         /* `relative` keeps the visually hidden column label inside the scroll area. */
-        <div className="relative overflow-x-auto rounded-lg border bg-card">
+        <div className="relative overflow-x-auto rounded-xl border bg-card">
           <table className="w-full min-w-[46rem] text-sm">
-            <thead className="border-b text-left text-muted-foreground">
+            <thead className="border-b text-left text-xs text-muted-foreground">
               <tr>
                 {/* The flag sits beside the date, as YNAB's flag column does, without widening the table. */}
-                <th className="py-2 pr-2 pl-9 font-medium">Date</th>
-                {showAccount && <th className="px-2 py-2 font-medium">Account</th>}
-                <th className="px-2 py-2 font-medium">Payee</th>
-                <th className="px-2 py-2 font-medium">Category</th>
-                <th className="px-2 py-2 font-medium">Memo</th>
-                <th className="px-2 py-2 text-right font-medium">Outflow</th>
-                <th className="px-2 py-2 text-right font-medium">Inflow</th>
-                <th className="px-2 py-2 text-center font-medium">
-                  <abbr title="Cleared" className="no-underline">
-                    C
-                  </abbr>
+                <th className="py-2.5 pr-2 pl-10 font-semibold">Date</th>
+                {showAccount && <th className="px-2 py-2.5 font-semibold">Account</th>}
+                <th className="px-2 py-2.5 font-semibold">Payee</th>
+                <th className="px-2 py-2.5 font-semibold">Category</th>
+                <th className="px-2 py-2.5 font-semibold">Memo</th>
+                <th className="px-2 py-2.5 text-right font-semibold">Outflow</th>
+                <th className="px-2 py-2.5 text-right font-semibold">Inflow</th>
+                <th className="px-2 py-2.5">
+                  <span className="sr-only">Cleared</span>
                 </th>
-                {showBalance && <th className="px-2 py-2 text-right font-medium">Balance</th>}
+                {showBalance && <th className="px-2 py-2.5 text-right font-semibold">Balance</th>}
                 <th className="px-2 py-2">
                   <span className="sr-only">Actions</span>
                 </th>
@@ -364,11 +363,23 @@ export function TransactionRegister({
 
                 return (
                   <Fragment key={transaction.id}>
-                    <tr className="border-b last:border-0">
-                      <td className="py-1 pr-2 pl-2 whitespace-nowrap tabular-nums">
-                        <span className="flex items-center gap-1">
+                    <tr
+                      // Clicking a row opens it for editing, as in YNAB; its buttons keep their
+                      // own jobs, and the Edit button stays for keyboards.
+                      onClick={(event) => {
+                        if (!account) return;
+                        if ((event.target as HTMLElement).closest('button, a, input, select'))
+                          return;
+                        setEditingId(transaction.id);
+                      }}
+                      className="group cursor-pointer border-b last:border-0 hover:bg-muted/40"
+                    >
+                      <td className="py-1.5 pr-2 pl-3 whitespace-nowrap tabular-nums">
+                        <span className="flex items-center gap-1.5">
                           <RegisterFlag transaction={transaction} />
-                          {transaction.date}
+                          <time dateTime={transaction.date} className="text-muted-foreground">
+                            {shortDate(transaction.date)}
+                          </time>
                         </span>
                       </td>
                       {showAccount && <td className="px-2 py-1.5">{transaction.accountName}</td>}
@@ -404,7 +415,8 @@ export function TransactionRegister({
                           <Money cents={transaction.runningBalanceCents ?? 0} />
                         </td>
                       )}
-                      <td className="px-2 py-1 text-right whitespace-nowrap">
+                      {/* Quiet until the row is hovered or a button in it has focus. */}
+                      <td className="px-2 py-1 text-right whitespace-nowrap opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
                         <Button
                           variant="ghost"
                           size="sm"
@@ -522,7 +534,9 @@ function PhoneRegister({
                   />
                 </span>
                 <span className="flex min-w-0 gap-2 text-xs text-muted-foreground">
-                  <span className="shrink-0 tabular-nums">{transaction.date}</span>
+                  <time dateTime={transaction.date} className="shrink-0 tabular-nums">
+                    {shortDate(transaction.date)}
+                  </time>
                   {showAccount && <span className="truncate">{transaction.accountName}</span>}
                   {category && <span className="min-w-0 truncate">{category}</span>}
                 </span>

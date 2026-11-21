@@ -110,3 +110,31 @@ test('the budget shows month totals, plain Assigned amounts, and each categoryâ€
   await expect(page).toHaveURL(/\/transactions\?categoryId=\d+&from=/);
   await expect(page.getByLabel('Results summary')).toContainText('2 transactions');
 });
+
+test('register rows show friendly dates and open for editing when clicked', async ({
+  page,
+  request,
+}) => {
+  const checking = await post<{ id: number }>(request, '/api/accounts', {
+    name: 'Checking',
+    startingBalanceCents: 1_000_00,
+    date: thisMonthDate(1),
+  });
+  await post(request, `/api/accounts/${checking.id}/transactions`, {
+    date: thisMonthDate(2),
+    payee: 'Corner Market',
+    amountCents: -40_00,
+  });
+  await page.goto(`/accounts/${checking.id}`);
+  const row = page.getByRole('row').filter({ hasText: 'Corner Market' });
+  const month = new Date().toLocaleString('en-US', { month: 'short' });
+  await expect(row.locator('time')).toHaveText(`${month} 2`);
+
+  // Clicking the cleared toggle doesn't open the row; clicking the row does.
+  await row.getByRole('button', { name: 'Uncleared' }).click();
+  await expect(page.getByRole('form', { name: 'Edit transaction' })).toHaveCount(0);
+  await row.getByText('Corner Market').click();
+  await expect(
+    page.getByRole('form', { name: 'Edit transaction' }).getByLabel('Payee'),
+  ).toHaveValue('Corner Market');
+});
