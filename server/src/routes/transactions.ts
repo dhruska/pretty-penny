@@ -3,6 +3,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import type { FastifyInstance } from 'fastify';
 import type { Db, Executor } from '../db/client.js';
 import { accounts, categories, payees, transactionLines, transactions } from '../db/schema.js';
+import { FLAG_COLORS, type FlagColor } from '../flags.js';
 import { resolvePayee } from './payees.js';
 import {
   amountCents,
@@ -33,6 +34,7 @@ export interface TransactionBody {
   lines?: LineInput[];
   transferAccountId?: number | null;
   cleared?: Cleared;
+  flag?: FlagColor | null;
   /** Required to change a reconciled transaction in a way that affects the budget. */
   confirmReconciled?: boolean;
 }
@@ -44,6 +46,8 @@ interface SearchQuery {
   from?: string;
   to?: string;
   cleared?: Cleared | 'reconciled';
+  /** One color, or 'any' for every flagged transaction. */
+  flag?: FlagColor | 'any';
 }
 
 interface AccountInfo {
@@ -65,6 +69,7 @@ const MAX_SPLIT_LINES = 50;
 
 const nullableId = { ...categoryId, type: ['integer', 'null'] };
 const cleared = { type: 'string', enum: ['uncleared', 'cleared'] } as const;
+export const flagField = { type: ['string', 'null'], enum: [...FLAG_COLORS, null] };
 
 export const fields = {
   date,
@@ -85,6 +90,7 @@ export const fields = {
   },
   transferAccountId: nullableId,
   cleared,
+  flag: flagField,
   confirmReconciled: { type: 'boolean' },
 };
 
@@ -128,6 +134,7 @@ const listColumns = {
   memo: transactions.memo,
   amountCents: transactions.amountCents,
   cleared: transactions.cleared,
+  flag: sql<FlagColor | null>`${transactions.flag}`,
   transferAccountId: pair.accountId,
   transferAccountName: pairAccount.name,
   lines: linesColumn,
@@ -338,8 +345,8 @@ export interface CreateOptions {
   cleared?: ClearedStatus;
   /** Import only: marks an account's starting balance. */
   isStartingBalance?: boolean;
-  /** Import only: the other side of a transfer keeps its own status and memo. */
-  pair?: { cleared: ClearedStatus; memo: string };
+  /** Import only: the other side of a transfer keeps its own status, memo and flag. */
+  pair?: { cleared: ClearedStatus; memo: string; flag?: FlagColor | null };
 }
 
 /** Creates a transaction, with its transfer pair and category lines, and returns its id. */
@@ -361,6 +368,7 @@ export async function createTransaction(
       memo: memoValue,
       amountCents: body.amountCents,
       cleared: options.cleared ?? body.cleared ?? defaultCleared(account),
+      flag: body.flag ?? null,
       isStartingBalance: options.isStartingBalance ?? false,
       scheduledTransactionId: options.scheduledTransactionId ?? null,
     })
@@ -376,7 +384,11 @@ export async function createTransaction(
   if (pairId !== null && options.pair) {
     await tx
       .update(transactions)
-      .set({ cleared: options.pair.cleared, memo: options.pair.memo.trim() })
+      .set({
+        cleared: options.pair.cleared,
+        memo: options.pair.memo.trim(),
+        flag: options.pair.flag ?? null,
+      })
       .where(eq(transactions.id, pairId));
   }
   await writeLines(tx, { self: row!.id, pair: pairId }, holder, lines);
@@ -425,12 +437,13 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
             from: date,
             to: date,
             cleared: { type: 'string', enum: ['uncleared', 'cleared', 'reconciled'] },
+            flag: { type: 'string', enum: [...FLAG_COLORS, 'any'] },
           },
         },
       },
     },
     async (request) => {
-      const { q, accountId, categoryId: category, from, to, cleared: status } = request.query;
+      const { q, accountId, categoryId: category, from, to, cleared: status, flag } = request.query;
       const conditions: (SQL | undefined)[] = [];
 
       const text = q?.trim();
@@ -455,6 +468,8 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
       if (from) conditions.push(gte(transactions.date, from));
       if (to) conditions.push(lte(transactions.date, to));
       if (status) conditions.push(eq(transactions.cleared, status));
+      if (flag === 'any') conditions.push(sql`${transactions.flag} is not null`);
+      else if (flag) conditions.push(eq(transactions.flag, flag));
 
       const rows = await findTransactions(db, and(...conditions), SEARCH_LIMIT + 1);
       return { transactions: rows.slice(0, SEARCH_LIMIT), hasMore: rows.length > SEARCH_LIMIT };
@@ -506,6 +521,7 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
             amountCents: transactions.amountCents,
             payeeId: transactions.payeeId,
             cleared: transactions.cleared,
+            flag: transactions.flag,
             transferTransactionId: transactions.transferTransactionId,
           })
           .from(transactions)
@@ -609,6 +625,8 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
           memo: body.memo?.trim() ?? current.memo,
           amountCents: amount,
           cleared: body.cleared ?? current.cleared,
+          // A flag doesn't affect balances, so it changes freely, even when reconciled.
+          flag: body.flag === undefined ? current.flag : body.flag,
           payeeId: other
             ? null
             : body.payee === undefined

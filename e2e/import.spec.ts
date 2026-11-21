@@ -28,6 +28,8 @@ test('imports a YNAB plan and compares it with YNAB', async ({ page }) => {
   await expect(preview.getByRole('row', { name: /Old Savings/ })).toContainText('(closed)');
   await expect(preview).toContainText('Credit card payment categories aren’t imported');
   await expect(preview).toContainText('Corner Market in Old Savings, next on Dec 1, 2026');
+  await expect(preview).toContainText('Flag names: Red is “Check this”, Blue is “Reimbursable”');
+  await expect(preview).toContainText('Oct 20, 2026 · Checking · Mystery Shop · -$40.00');
 
   await preview.getByRole('button', { name: 'Import' }).click();
   const report = page.getByRole('region', { name: 'Import report' });
@@ -51,6 +53,11 @@ test('imports a YNAB plan and compares it with YNAB', async ({ page }) => {
   const sidebar = page.getByRole('complementary', { name: 'Accounts' });
   await expect(sidebar.getByRole('link', { name: /Checking/ })).toContainText('$7,880.00');
   await expect(page.getByRole('link', { name: 'Import your plan' })).toHaveCount(0);
+
+  // Flags come across with their names.
+  await sidebar.getByRole('link', { name: /Visa/ }).click();
+  await expect(page.getByRole('button', { name: 'Flag: Reimbursable' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Flag: Check this' })).toBeVisible();
 
   await sidebar.getByRole('link', { name: 'Import from YNAB' }).click();
   await expect(page.getByText('Importing only works on an empty budget')).toBeVisible();

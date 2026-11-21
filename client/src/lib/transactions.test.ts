@@ -11,6 +11,7 @@ const base: Transaction = {
   memo: 'weekly shop',
   amountCents: -1_234_56,
   cleared: 'uncleared',
+  flag: null,
   categoryId: 5,
   categoryName: 'Groceries',
   hasCategoryLine: true,

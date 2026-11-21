@@ -3,11 +3,13 @@ import { alias } from 'drizzle-orm/pg-core';
 import type { FastifyInstance } from 'fastify';
 import { computeBudget } from '../budget.js';
 import { exportDate, exportMoney, exportMonth, toCsv } from '../csv.js';
+import { flagLabel, isFlagColor } from '../flags.js';
 import type { Db } from '../db/client.js';
 import {
   accounts,
   categories,
   categoryGroups,
+  flagNames,
   payees,
   READY_TO_ASSIGN_KEY,
   transactionLines,
@@ -195,12 +197,15 @@ export function registerReportRoutes(app: FastifyInstance, db: Db, today = local
         memo: transactions.memo,
         amountCents: transactions.amountCents,
         cleared: transactions.cleared,
+        flag: transactions.flag,
+        flagName: flagNames.name,
       })
       .from(transactions)
       .innerJoin(accounts, eq(accounts.id, transactions.accountId))
       .leftJoin(payees, eq(payees.id, transactions.payeeId))
       .leftJoin(pair, eq(pair.id, transactions.transferTransactionId))
       .leftJoin(pairAccount, eq(pairAccount.id, pair.accountId))
+      .leftJoin(flagNames, eq(flagNames.color, transactions.flag))
       .orderBy(
         asc(accounts.createdAt),
         asc(accounts.id),
@@ -275,7 +280,7 @@ export function registerReportRoutes(app: FastifyInstance, db: Db, today = local
         const category = isReadyToAssign ? 'Ready to Assign' : (part.categoryName ?? '');
         csv.push([
           row.accountName,
-          '',
+          isFlagColor(row.flag) ? flagLabel(row.flag, row.flagName) : '',
           exportDate(row.date),
           payee,
           group && category ? `${group}: ${category}` : '',

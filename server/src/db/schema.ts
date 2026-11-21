@@ -49,6 +49,8 @@ export const transactions = pgTable(
     // 'uncleared', 'cleared' or 'reconciled'. Reconciled transactions are locked, as in YNAB.
     cleared: text().notNull().default('uncleared'),
     memo: text().notNull().default(''),
+    // One of FLAG_COLORS in flags.ts, or null. Each side of a transfer has its own, as in YNAB.
+    flag: text(),
     // Negative for outflows. Limits in routes/schemas.ts keep this within JavaScript's safe range.
     amountCents: bigint('amount_cents', { mode: 'number' }).notNull(),
     isStartingBalance: boolean('is_starting_balance').notNull().default(false),
@@ -125,6 +127,8 @@ export const scheduledTransactions = pgTable(
     nextDate: date('next_date', { mode: 'string' }).notNull(),
     payeeId: integer('payee_id').references(() => payees.id, { onDelete: 'set null' }),
     memo: text().notNull().default(''),
+    // Carried to the transactions this schedule posts.
+    flag: text(),
     amountCents: bigint('amount_cents', { mode: 'number' }).notNull(),
     categoryId: integer('category_id').references(() => categories.id, { onDelete: 'restrict' }),
     // Split lines, if the scheduled transaction is a split; otherwise null.
@@ -149,3 +153,9 @@ export const monthlyAssignments = pgTable(
   },
   (table) => [unique('monthly_assignments_category_month').on(table.categoryId, table.month)],
 );
+
+/** Custom names for flag colors, such as "Reimbursable". Colors without a row have no name. */
+export const flagNames = pgTable('flag_names', {
+  color: text().primaryKey(),
+  name: text().notNull(),
+});

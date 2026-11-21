@@ -4,6 +4,7 @@ import type { Db } from './db/client.js';
 import { registerAccountRoutes } from './routes/accounts.js';
 import { registerBudgetRoutes } from './routes/budget.js';
 import { registerCategoryRoutes } from './routes/categories.js';
+import { registerFlagRoutes } from './routes/flags.js';
 import { registerImportRoutes } from './routes/import.js';
 import { registerPayeeRoutes } from './routes/payees.js';
 import { registerReportRoutes } from './routes/reports.js';
@@ -35,6 +36,7 @@ export function buildApp(db: Db, options: AppOptions = {}) {
   registerCategoryRoutes(app, db);
   registerBudgetRoutes(app, db);
   registerPayeeRoutes(app, db);
+  registerFlagRoutes(app, db);
   registerScheduledRoutes(app, db, options.today);
   registerReportRoutes(app, db, options.today);
   registerImportRoutes(

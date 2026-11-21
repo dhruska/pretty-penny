@@ -10,8 +10,10 @@ import {
   reportText,
   signedCents,
   skippedScheduleLine,
+  toFixLine,
   ynabTypeLabel,
 } from './importReport';
+import { flagLabel } from './flags';
 
 const quietNotes: ImportNotes = {
   paymentCategories: [],
@@ -22,7 +24,9 @@ const quietNotes: ImportNotes = {
   unpairedTransfers: 0,
   unapproved: 0,
   flagged: 0,
+  flagNames: [],
   skippedSchedules: [],
+  toFix: [],
 };
 
 const report: ImportReport = {
@@ -138,6 +142,10 @@ describe('noteLines', () => {
       unpairedTransfers: 2,
       unapproved: 1,
       flagged: 3,
+      flagNames: [
+        { color: 'red', name: 'Check' },
+        { color: 'blue', name: 'Work' },
+      ],
     });
     expect(lines).toEqual([
       'Credit card payment categories aren’t imported, since Pretty Penny treats cards like cash: Visa ($300.00 assigned).',
@@ -147,9 +155,44 @@ describe('noteLines', () => {
       '1 transaction moves to Uncategorized, because its category isn’t imported.',
       '2 transfers are missing the other side in YNAB and become ordinary transactions.',
       '1 unapproved transaction is imported as usual, since Pretty Penny has no approval step.',
-      'Flags on 3 transactions aren’t imported.',
+      '3 flagged transactions keep their flags. Flag names: Red is “Check”, Blue is “Work”.',
       'Targets, category and account notes, and payee locations aren’t imported. Transaction memos are.',
     ]);
+  });
+});
+
+describe('flags and transactions to fix', () => {
+  it('mentions a single flagged transaction, with no names', () => {
+    expect(noteLines({ ...quietNotes, flagged: 1 })[0]).toBe(
+      '1 flagged transaction keeps its flag.',
+    );
+  });
+
+  it('labels flags by name, or by color when unnamed', () => {
+    const flags = [
+      { color: 'red' as const, name: 'Check' },
+      { color: 'blue' as const, name: null },
+    ];
+    expect(flagLabel('red', flags)).toBe('Check');
+    expect(flagLabel('blue', flags)).toBe('Blue');
+    expect(flagLabel('purple', undefined)).toBe('Purple');
+  });
+
+  it('describes each transaction to fix and lists them in the text report', () => {
+    const item = {
+      reason: 'uncategorized' as const,
+      date: '2026-10-20',
+      accountName: 'Checking',
+      payee: 'Shop',
+      amountCents: -40_00,
+    };
+    expect(toFixLine(item)).toBe('Oct 20, 2026 · Checking · Shop · -$40.00: needs a category');
+    expect(toFixLine({ ...item, reason: 'unpairedTransfer', payee: '' })).toBe(
+      'Oct 20, 2026 · Checking · No payee · -$40.00: transfer missing its other side in YNAB',
+    );
+    const text = reportText({ ...report, notes: { ...report.notes, toFix: [item] } });
+    expect(text).toContain('To fix after importing\n  Oct 20, 2026 · Checking · Shop');
+    expect(reportText(report)).not.toContain('To fix after importing');
   });
 });
 

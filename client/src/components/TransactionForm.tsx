@@ -16,6 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 import { cn } from 'cn';
 import { useId, useState, type ComponentProps, type FormEvent } from 'react';
 import { CategorySelect, SELECT_CLASS } from './CategorySelect';
+import { FlagPicker } from './FlagPicker';
 import {
   amountToFields,
   lineCents,
@@ -61,6 +62,7 @@ export function TransactionForm({
   const [categoryChosen, setCategoryChosen] = useState(transaction !== undefined);
   const payees = useQuery({ queryKey: ['payees'], queryFn: api.listPayees });
   const [memo, setMemo] = useState(transaction?.memo ?? '');
+  const [flag, setFlag] = useState(transaction?.flag ?? null);
   const [outflow, setOutflow] = useState(amount < 0 ? centsToInput(amount) : '');
   const [inflow, setInflow] = useState(amount > 0 ? centsToInput(amount) : '');
   const [error, setError] = useState<string | null>(null);
@@ -177,6 +179,7 @@ export function TransactionForm({
           ...(lines ? { lines } : { categoryId: usesCategory ? categoryId : null }),
           transferAccountId,
           amountCents: result.cents,
+          flag,
         },
         frequency,
       );
@@ -188,6 +191,7 @@ export function TransactionForm({
         setCategoryChosen(false);
         setSplitLines(null);
         setMemo('');
+        setFlag(null);
         setOutflow('');
         setInflow('');
       }
@@ -329,7 +333,7 @@ export function TransactionForm({
         <SplitLinesEditor lines={splitLines!} totalCents={totalCents} onChange={setSplitLines} />
       )}
       {error && <p className="text-sm text-negative">{error}</p>}
-      <div className="flex gap-2">
+      <div className="flex items-center gap-2">
         <Button type="submit" size="sm" disabled={isSaving}>
           {submitLabel}
         </Button>
@@ -338,6 +342,10 @@ export function TransactionForm({
             Cancel
           </Button>
         )}
+        <div className="ml-auto flex items-center gap-1 text-sm text-muted-foreground">
+          Flag
+          <FlagPicker value={flag} onChange={setFlag} />
+        </div>
       </div>
     </form>
   );

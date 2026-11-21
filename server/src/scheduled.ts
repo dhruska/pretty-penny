@@ -2,6 +2,7 @@ import { and, asc, eq, lte } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { Db, Executor } from './db/client.js';
 import { accounts, payees, scheduledTransactions } from './db/schema.js';
+import type { FlagColor } from './flags.js';
 import { createTransaction, type TransactionBody } from './routes/transactions.js';
 import { occurrence, type Frequency } from './schedule.js';
 
@@ -19,6 +20,7 @@ export async function occurrenceBody(tx: Executor, schedule: Schedule): Promise<
     date: schedule.nextDate,
     payee: payee?.name ?? '',
     memo: schedule.memo,
+    flag: schedule.flag as FlagColor | null,
     amountCents: schedule.amountCents,
     transferAccountId: schedule.transferAccountId,
     ...(schedule.lines

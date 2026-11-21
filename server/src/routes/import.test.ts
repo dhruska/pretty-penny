@@ -343,6 +343,42 @@ describe('YNAB import', () => {
     expect(await get(`/api/accounts/${oldSavings!.id}/scheduled`)).toEqual([]);
   });
 
+  it('imports flags and their names', async () => {
+    const report = (await runImport()).json<ImportReport>();
+    expect(report.notes.flagged).toBe(2);
+    expect(report.notes.toFix).toMatchObject([{ reason: 'uncategorized', payee: 'Mystery Shop' }]);
+
+    expect(await get<{ color: string; name: string | null }[]>('/api/flags')).toEqual([
+      { color: 'red', name: 'Check this' },
+      { color: 'orange', name: null },
+      { color: 'yellow', name: null },
+      { color: 'green', name: null },
+      { color: 'blue', name: 'Reimbursable' },
+      { color: 'purple', name: null },
+    ]);
+    const flagged = await get<{
+      transactions: { accountName: string; payee: string; flag: string; date: string }[];
+    }>('/api/transactions?flag=any');
+    expect(
+      flagged.transactions.map(({ accountName, payee, flag, date }) => [
+        accountName,
+        payee,
+        flag,
+        date,
+      ]),
+    ).toEqual([
+      ['Visa', '', 'blue', '2026-10-15'],
+      ['Visa', 'Corner Market', 'red', '2026-10-12'],
+    ]);
+
+    const accountList = await get<{ id: number; name: string }[]>('/api/accounts');
+    const checkingId = accountList.find((account) => account.name === 'Checking')!.id;
+    const schedules = await get<{ payee: string; flag: string | null }[]>(
+      `/api/accounts/${checkingId}/scheduled`,
+    );
+    expect(schedules.find((schedule) => schedule.payee === 'Landlord')!.flag).toBe('green');
+  });
+
   it('refuses to import into a database with data, leaving it unchanged', async () => {
     await post('/api/accounts', {
       name: 'Existing',
@@ -381,6 +417,20 @@ describe('YNAB import', () => {
     expect(response.json().message).toBe(
       'Couldn’t import the 2026-10-15 transaction in Checking: A transfer needs two different accounts.',
     );
+    expect(await get('/api/import/status')).toEqual({ canImport: true });
+  });
+
+  it('explains a database failure with the database’s own reason', async () => {
+    // A memo the database can't store (a null character), which only the database rejects.
+    ynab.plan.transactions.find((item) => item.id === 't-start-checking')!.memo = 'bad\u0000memo';
+
+    const response = await runImport();
+    expect(response.statusCode).toBe(422);
+    const { message } = response.json<{ message: string }>();
+    expect(message).toBe(
+      'Couldn’t import the 2026-09-01 transaction in Checking: invalid byte sequence for encoding "UTF8": 0x00',
+    );
+    expect(message).not.toContain('insert into');
     expect(await get('/api/import/status')).toEqual({ canImport: true });
   });
 

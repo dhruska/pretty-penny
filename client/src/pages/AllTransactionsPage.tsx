@@ -1,15 +1,17 @@
-import { api } from '@/api';
+import { api, FLAG_COLORS } from '@/api';
 import { SELECT_CLASS } from '@/components/CategorySelect';
+import { useFlags } from '@/components/FlagPicker';
 import { Money } from '@/components/Money';
 import { TransactionRegister } from '@/components/TransactionRegister';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { flagLabel } from '@/lib/flags';
 import { currentMonth, monthRange, shiftMonth } from '@/lib/months';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useDeferredValue, useId, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router';
 
-const FILTER_KEYS = ['q', 'accountId', 'categoryId', 'from', 'to', 'cleared'] as const;
+const FILTER_KEYS = ['q', 'accountId', 'categoryId', 'from', 'to', 'cleared', 'flag'] as const;
 
 type FilterKey = (typeof FILTER_KEYS)[number];
 type Filters = Partial<Record<FilterKey, string>>;
@@ -38,6 +40,7 @@ export function AllTransactionsPage() {
   const [params, setParams] = useSearchParams();
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts });
   const categories = useQuery({ queryKey: ['categories'], queryFn: api.listCategories });
+  const flags = useFlags();
 
   // The filters live in state so quick successive changes never work from stale values, and are
   // copied into the URL so filtered links, such as from the budget's uncategorized notice, work.
@@ -95,7 +98,7 @@ export function AllTransactionsPage() {
 
       <section
         aria-label="Filters"
-        className="grid grid-cols-2 gap-2 rounded-lg border bg-card p-3 md:grid-cols-5"
+        className="grid grid-cols-2 gap-2 rounded-lg border bg-card p-3 md:grid-cols-3 lg:grid-cols-6"
       >
         <div className="col-span-2 md:col-span-1">
           <Field label="Search" id={`${id}-q`}>
@@ -170,6 +173,22 @@ export function AllTransactionsPage() {
             <option value="cleared">Cleared</option>
             <option value="uncleared">Uncleared</option>
             <option value="reconciled">Reconciled</option>
+          </select>
+        </Field>
+        <Field label="Flag" id={`${id}-flag`}>
+          <select
+            id={`${id}-flag`}
+            className={SELECT_CLASS}
+            value={filters.flag ?? ''}
+            onChange={(event) => update({ flag: event.target.value })}
+          >
+            <option value="">Any</option>
+            <option value="any">Flagged</option>
+            {FLAG_COLORS.map((color) => (
+              <option key={color} value={color}>
+                {flagLabel(color, flags.data)}
+              </option>
+            ))}
           </select>
         </Field>
         {datePreset === 'custom' && (

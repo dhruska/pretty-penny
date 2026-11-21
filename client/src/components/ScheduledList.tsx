@@ -11,6 +11,7 @@ import { frequencyLabel } from '@/lib/frequencies';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ConfirmDelete } from './ConfirmDelete';
+import { FlagBadge } from './FlagPicker';
 import { Money } from './Money';
 import { TransactionForm } from './TransactionForm';
 
@@ -23,6 +24,7 @@ function toDraft(schedule: ScheduledTransaction): TransactionDraft {
     amountCents: schedule.amountCents,
     categoryId: schedule.categoryId,
     transferAccountId: schedule.transferAccountId,
+    flag: schedule.flag,
     lines: (schedule.lines ?? []).map((line) => ({ ...line, categoryName: null })),
   };
 }
@@ -88,7 +90,12 @@ export function ScheduledList({ account }: { account: Account }) {
                   <td className="px-2 py-1.5 whitespace-nowrap tabular-nums">
                     {schedule.nextDate}
                   </td>
-                  <td className="px-2 py-1.5">{scheduleLabel(schedule)}</td>
+                  <td className="px-2 py-1.5">
+                    <span className="inline-flex items-center gap-1.5">
+                      {schedule.flag && <FlagBadge color={schedule.flag} />}
+                      {scheduleLabel(schedule)}
+                    </span>
+                  </td>
                   <td className="px-2 py-1.5">{categoryLabel(schedule)}</td>
                   <td className="px-2 py-1.5">{frequencyLabel(schedule.frequency)}</td>
                   <td className="px-2 py-1.5 text-right">

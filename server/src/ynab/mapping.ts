@@ -1,4 +1,5 @@
 import { isBudgetType, type AccountType } from '../account-types.js';
+import { FLAG_COLORS, isFlagColor, type FlagColor } from '../flags.js';
 import { FREQUENCIES, occurrence, type Frequency } from '../schedule.js';
 import type {
   YnabAccount,
@@ -80,8 +81,14 @@ export interface PlannedTransaction {
   category: CategoryRef;
   /** Set for a split; `category` is then unused. */
   lines: PlannedLine[] | null;
+  flag: FlagColor | null;
   /** Set for a transfer, which also creates the other side. */
-  transfer: { accountYnabId: string; cleared: YnabCleared; memo: string } | null;
+  transfer: {
+    accountYnabId: string;
+    cleared: YnabCleared;
+    memo: string;
+    flag: FlagColor | null;
+  } | null;
 }
 
 export interface PlannedSchedule {
@@ -96,6 +103,16 @@ export interface PlannedSchedule {
   category: CategoryRef;
   lines: PlannedLine[] | null;
   transferAccountYnabId: string | null;
+  flag: FlagColor | null;
+}
+
+/** A transaction to look at after importing, listed in the preview and report. */
+export interface TransactionToFix {
+  reason: 'uncategorized' | 'unpairedTransfer';
+  date: string;
+  accountName: string;
+  payee: string;
+  amountCents: number;
 }
 
 export interface SkippedSchedule {
@@ -120,8 +137,13 @@ export interface ImportNotes {
   /** Transfers whose other side is missing in YNAB, imported as ordinary transactions. */
   unpairedTransfers: number;
   unapproved: number;
+  /** Flagged transactions, counting each side of a transfer. */
   flagged: number;
+  /** Each color's name, taken from YNAB's transactions; colors without one are left out. */
+  flagNames: { color: FlagColor; name: string }[];
   skippedSchedules: SkippedSchedule[];
+  /** Uncategorized transactions and unpaired transfers, oldest first. */
+  toFix: TransactionToFix[];
 }
 
 /** An amount YNAB stores with a fraction of a cent, which needs fixing in YNAB before importing. */
@@ -276,7 +298,9 @@ export function planImport(plan: YnabPlan): ImportPlan {
     unpairedTransfers: 0,
     unapproved: 0,
     flagged: 0,
+    flagNames: [],
     skippedSchedules: [],
+    toFix: [],
   };
 
   /** Maps a YNAB category to ours, counting categories that won't come across. */
@@ -337,6 +361,7 @@ export function planImport(plan: YnabPlan): ImportPlan {
   const handled = new Set<string>();
   const startingBalanceSeen = new Set<string>();
   const transactions: PlannedTransaction[] = [];
+  const unpaired = new Set<PlannedTransaction>();
 
   /** The category a transfer keeps: the budget side's, when exactly one side is on the budget. */
   const transferCategory = (
@@ -366,6 +391,7 @@ export function planImport(plan: YnabPlan): ImportPlan {
     category: null,
     lines: null,
     transfer: null,
+    flag: flagOf(transaction.flag_color),
     ...fields,
   });
 
@@ -379,12 +405,12 @@ export function planImport(plan: YnabPlan): ImportPlan {
     handled.add(transaction.id);
     const account = accountById.get(transaction.account_id)!;
     if (!transaction.approved) notes.unapproved += 1;
-    if (transaction.flag_color) notes.flagged += 1;
 
     const subs = subsByParent.get(transaction.id) ?? [];
     if (subs.length > 0) {
       // A split. Lines that are transfers become separate transfers, which we don't split yet.
       const lineSubs: YnabSubtransaction[] = [];
+      let hasUnpaired = false;
       for (const sub of subs) {
         const other = sub.transfer_account_id
           ? accountById.get(sub.transfer_account_id)
@@ -393,7 +419,10 @@ export function planImport(plan: YnabPlan): ImportPlan {
           ? partnerOf(sub.id, sub.transfer_transaction_id)
           : undefined;
         if (!other || !partner) {
-          if (sub.transfer_account_id) notes.unpairedTransfers += 1;
+          if (sub.transfer_account_id) {
+            notes.unpairedTransfers += 1;
+            hasUnpaired = true;
+          }
           lineSubs.push(sub);
           continue;
         }
@@ -409,6 +438,7 @@ export function planImport(plan: YnabPlan): ImportPlan {
               accountYnabId: other.ynabId,
               cleared: partner.cleared,
               memo: partner.memo ?? '',
+              flag: flagOf(partner.flag_color),
             },
           }),
         );
@@ -420,13 +450,13 @@ export function planImport(plan: YnabPlan): ImportPlan {
         const [only] = lineSubs;
         const category = account.onBudget ? categoryRef(only!.category_id) : null;
         if (account.onBudget && category === null) notes.uncategorized += 1;
-        transactions.push(
-          regular(transaction, account, {
-            memo: transaction.memo || (lineSubs.length === 1 ? (only!.memo ?? '') : ''),
-            amountCents: lineTotal,
-            category,
-          }),
-        );
+        const planned = regular(transaction, account, {
+          memo: transaction.memo || (lineSubs.length === 1 ? (only!.memo ?? '') : ''),
+          amountCents: lineTotal,
+          category,
+        });
+        transactions.push(planned);
+        if (hasUnpaired) unpaired.add(planned);
         continue;
       }
       const lines = lineSubs.map((sub) => {
@@ -434,10 +464,13 @@ export function planImport(plan: YnabPlan): ImportPlan {
         if (category === null) notes.uncategorized += 1;
         return { category, amountCents: cents(sub.amount), memo: sub.memo ?? '' };
       });
-      transactions.push(regular(transaction, account, { amountCents: lineTotal, lines }));
+      const planned = regular(transaction, account, { amountCents: lineTotal, lines });
+      transactions.push(planned);
+      if (hasUnpaired) unpaired.add(planned);
       continue;
     }
 
+    let isUnpaired = false;
     if (transaction.transfer_account_id) {
       // The other side of a split line that was a transfer is handled with its split.
       if (transaction.transfer_transaction_id && subIds.has(transaction.transfer_transaction_id)) {
@@ -460,12 +493,14 @@ export function planImport(plan: YnabPlan): ImportPlan {
               accountYnabId: other.ynabId,
               cleared: partner.cleared,
               memo: partner.memo ?? '',
+              flag: flagOf(partner.flag_color),
             },
           }),
         );
         continue;
       }
       notes.unpairedTransfers += 1;
+      isUnpaired = true;
     }
 
     const isStartingBalance =
@@ -484,8 +519,23 @@ export function planImport(plan: YnabPlan): ImportPlan {
       category = categoryRef(transaction.category_id);
       if (category === null) notes.uncategorized += 1;
     }
-    transactions.push(regular(transaction, account, { isStartingBalance, category }));
+    // An unpaired transfer becomes an ordinary transaction named after the account it went to.
+    const unpairedTo = isUnpaired ? accountById.get(transaction.transfer_account_id!) : undefined;
+    const planned = regular(transaction, account, {
+      isStartingBalance,
+      category,
+      ...(unpairedTo && { payee: `Transfer : ${unpairedTo.name}` }),
+    });
+    transactions.push(planned);
+    if (isUnpaired) unpaired.add(planned);
   }
+
+  notes.flagged = transactions.reduce(
+    (sum, item) => sum + (item.flag ? 1 : 0) + (item.transfer?.flag ? 1 : 0),
+    0,
+  );
+  notes.flagNames = flagNamesFrom([...plan.transactions, ...plan.scheduled_transactions]);
+  notes.toFix = transactionsToFix(transactions, accountById, unpaired);
 
   // Scheduled transactions
   const scheduledSubsByParent = new Map<string, typeof plan.scheduled_subtransactions>();
@@ -557,6 +607,7 @@ export function planImport(plan: YnabPlan): ImportPlan {
       category,
       lines,
       transferAccountYnabId: other?.ynabId ?? null,
+      flag: flagOf(scheduled.flag_color),
     });
   }
 
@@ -694,4 +745,57 @@ function findFractionalAmounts(
   }
 
   return found.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+const flagOf = (color: string | null | undefined): FlagColor | null =>
+  isFlagColor(color) ? color : null;
+
+/**
+ * YNAB has no list of flag names; each flagged item carries its color's name. Each color takes
+ * the name used most, with ties going to the name that sorts first.
+ */
+export function flagNamesFrom(
+  items: { flag_color?: string | null; flag_name?: string | null; deleted: boolean }[],
+) {
+  const counts = new Map<FlagColor, Map<string, number>>();
+  for (const item of items) {
+    const name = item.flag_name?.trim();
+    if (item.deleted || !isFlagColor(item.flag_color) || !name) continue;
+    const names = counts.get(item.flag_color) ?? new Map<string, number>();
+    names.set(name, (names.get(name) ?? 0) + 1);
+    counts.set(item.flag_color, names);
+  }
+  return FLAG_COLORS.flatMap((color) => {
+    const names = [...(counts.get(color) ?? new Map<string, number>())];
+    names.sort(([a, countA], [b, countB]) => countB - countA || a.localeCompare(b));
+    return names.length > 0 ? [{ color, name: names[0]![0] }] : [];
+  });
+}
+
+/** Uncategorized transactions that need a category, and transfers missing their other side. */
+function transactionsToFix(
+  transactions: PlannedTransaction[],
+  accountById: Map<string, PlannedAccount>,
+  unpaired: Set<PlannedTransaction>,
+): TransactionToFix[] {
+  const found: TransactionToFix[] = [];
+  for (const item of transactions) {
+    const account = accountById.get(item.accountYnabId)!;
+    const other = item.transfer ? accountById.get(item.transfer.accountYnabId)! : null;
+    const payee = other ? `Transfer : ${other.name}` : item.payee;
+    const base = {
+      date: item.date,
+      accountName: account.name,
+      payee,
+      amountCents: item.amountCents,
+    };
+    // Only money entering or leaving the budget has a category.
+    const needsCategory = other ? account.onBudget !== other.onBudget : account.onBudget;
+    const uncategorized = item.lines
+      ? item.lines.some((line) => line.category === null)
+      : item.category === null;
+    if (needsCategory && uncategorized) found.push({ reason: 'uncategorized', ...base });
+    if (unpaired.has(item)) found.push({ reason: 'unpairedTransfer', ...base });
+  }
+  return found;
 }

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { sampleYnabPlan } from '../test/ynab-plan.js';
-import { mapAccountType, planImport, READY_TO_ASSIGN, scheduleStart } from './mapping.js';
+import {
+  flagNamesFrom,
+  mapAccountType,
+  planImport,
+  READY_TO_ASSIGN,
+  scheduleStart,
+} from './mapping.js';
 
 describe('mapAccountType', () => {
   it('keeps types that exist on the same side', () => {
@@ -220,9 +226,81 @@ describe('planImport', () => {
         recategorized: 0,
         unpairedTransfers: 0,
         unapproved: 1,
-        flagged: 1,
+        flagged: 2,
+        flagNames: [
+          { color: 'red', name: 'Check this' },
+          { color: 'blue', name: 'Reimbursable' },
+        ],
+        toFix: [
+          {
+            reason: 'uncategorized',
+            date: '2026-10-20',
+            accountName: 'Checking',
+            payee: 'Mystery Shop',
+            amountCents: -40_00,
+          },
+        ],
       },
     });
+  });
+
+  it('keeps flags, with each side of a transfer keeping its own', () => {
+    const { transactions, schedules } = planImport(sampleYnabPlan());
+    expect(transactions.find((item) => item.payee === 'Corner Market' && item.flag)).toMatchObject({
+      date: '2026-10-12',
+      flag: 'red',
+    });
+    const cardPayment = transactions.find(
+      (item) => item.date === '2026-10-15' && item.transfer?.accountYnabId === 'acct-visa',
+    )!;
+    expect(cardPayment.flag).toBeNull();
+    expect(cardPayment.transfer!.flag).toBe('blue');
+    expect(schedules.find((item) => item.payee === 'Landlord')!.flag).toBe('green');
+    expect(schedules.find((item) => item.payee === 'Allowance')!.flag).toBeNull();
+  });
+
+  it('lists transfers missing their other side, with any that also need a category', () => {
+    const plan = sampleYnabPlan();
+    // The card payment's other side is gone, so it's an ordinary transaction.
+    plan.transactions = plan.transactions.filter((item) => item.id !== 't-visa-pay-oct-in');
+    // A split with a line whose transfer side is gone keeps that line, uncategorized.
+    const save = plan.subtransactions.find((sub) => sub.id === 'sub-save')!;
+    save.category_id = null;
+    plan.transactions = plan.transactions.filter((item) => item.id !== 't-emergency-save');
+
+    const { notes } = planImport(plan).preview;
+    expect(notes.unpairedTransfers).toBe(2);
+    expect(notes.toFix).toEqual([
+      {
+        reason: 'uncategorized',
+        date: '2026-10-08',
+        accountName: 'Checking',
+        payee: 'Big Box',
+        amountCents: -180_00,
+      },
+      {
+        reason: 'unpairedTransfer',
+        date: '2026-10-08',
+        accountName: 'Checking',
+        payee: 'Big Box',
+        amountCents: -180_00,
+      },
+      {
+        reason: 'uncategorized',
+        date: '2026-10-15',
+        accountName: 'Checking',
+        payee: 'Transfer : Visa',
+        amountCents: -320_00,
+      },
+      {
+        reason: 'unpairedTransfer',
+        date: '2026-10-15',
+        accountName: 'Checking',
+        payee: 'Transfer : Visa',
+        amountCents: -320_00,
+      },
+      expect.objectContaining({ reason: 'uncategorized', payee: 'Mystery Shop' }),
+    ]);
   });
 
   it('refuses currencies without cents and amounts with fractions of a cent', () => {
@@ -383,5 +461,42 @@ describe('planImport', () => {
       'The account it transfers to no longer exists.',
       'One of its split lines is a transfer, which Pretty Penny doesn’t support yet.',
     ]);
+  });
+});
+
+describe('flagNamesFrom', () => {
+  const item = (flag_color: string | null, flag_name: string | null, deleted = false) => ({
+    flag_color,
+    flag_name,
+    deleted,
+  });
+
+  it('gives each color its most used name, in YNAB’s color order', () => {
+    expect(
+      flagNamesFrom([
+        item('purple', 'Gifts'),
+        item('red', 'Old'),
+        item('red', 'Check'),
+        item('red', 'Check'),
+        item('red', 'Old', true),
+        item('red', 'Old', true),
+      ]),
+    ).toEqual([
+      { color: 'red', name: 'Check' },
+      { color: 'purple', name: 'Gifts' },
+    ]);
+  });
+
+  it('breaks ties by name and leaves out colors without one', () => {
+    expect(
+      flagNamesFrom([
+        item('green', 'Zoo'),
+        item('green', 'Apple'),
+        item('blue', null),
+        item('blue', '  '),
+        item(null, 'No color'),
+        item('pink', 'Not a YNAB color'),
+      ]),
+    ).toEqual([{ color: 'green', name: 'Apple' }]);
   });
 });

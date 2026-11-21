@@ -1,4 +1,10 @@
-import { api, type ImportPreview, type ImportReport, type YnabPlanSummary } from '@/api';
+import {
+  api,
+  type ImportNotes,
+  type ImportPreview,
+  type ImportReport,
+  type YnabPlanSummary,
+} from '@/api';
 import { SELECT_CLASS } from '@/components/CategorySelect';
 import { Money } from '@/components/Money';
 import { Button } from '@/components/ui/button';
@@ -14,6 +20,7 @@ import {
   plural,
   reportText,
   skippedScheduleLine,
+  toFixLine,
   ynabTypeLabel,
 } from '@/lib/importReport';
 import { formatMonth } from '@/lib/months';
@@ -110,7 +117,36 @@ function Preview({ preview }: { preview: ImportPreview }) {
           )}
         </ul>
       </div>
+      <ToFixList notes={notes} imported={false} />
     </>
+  );
+}
+
+/** Transactions to look at once imported: those without a category, and unpaired transfers. */
+function ToFixList({ notes, imported }: { notes: ImportNotes; imported: boolean }) {
+  if (notes.toFix.length === 0) return null;
+  return (
+    <div className="text-sm">
+      <h4 className="font-medium">To fix after importing</h4>
+      <p className="text-muted-foreground">
+        {imported ? (
+          <>
+            Find these in{' '}
+            <Link to="/transactions" className="text-primary underline-offset-2 hover:underline">
+              All transactions
+            </Link>
+            . Give each a category, or edit an unpaired transfer and choose the account it went to.
+          </>
+        ) : (
+          'These come in as they are. You can fix them in Pretty Penny afterward.'
+        )}
+      </p>
+      <ul className="mt-1 max-h-64 list-disc space-y-1 overflow-y-auto pl-5">
+        {notes.toFix.map((item, index) => (
+          <li key={index}>{toFixLine(item)}</li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -229,6 +265,8 @@ function Report({ report }: { report: ImportReport }) {
           </>
         )}
       </div>
+
+      <ToFixList notes={report.notes} imported />
 
       {report.notes.skippedSchedules.length > 0 && (
         <div className="text-sm">

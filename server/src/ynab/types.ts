@@ -65,6 +65,8 @@ export interface YnabTransaction {
   cleared: YnabCleared;
   approved: boolean;
   flag_color?: string | null;
+  /** The color's custom name, such as "Reimbursable". */
+  flag_name?: string | null;
   account_id: string;
   payee_id?: string | null;
   category_id?: string | null;
@@ -92,6 +94,8 @@ export interface YnabScheduledTransaction {
   frequency: string;
   amount: number;
   memo?: string | null;
+  flag_color?: string | null;
+  flag_name?: string | null;
   account_id: string;
   payee_id?: string | null;
   category_id?: string | null;

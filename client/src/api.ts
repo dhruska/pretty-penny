@@ -27,6 +27,16 @@ export class ApiError extends Error {
 export const isReconciledError = (error: unknown) =>
   error instanceof ApiError && error.code === 'RECONCILED';
 
+/** YNAB's flag colors, in YNAB's order. */
+export const FLAG_COLORS = ['red', 'orange', 'yellow', 'green', 'blue', 'purple'] as const;
+export type FlagColor = (typeof FLAG_COLORS)[number];
+
+/** A flag color with its custom name, or null when unnamed. */
+export interface Flag {
+  color: FlagColor;
+  name: string | null;
+}
+
 export interface Transaction {
   id: number;
   accountId: number;
@@ -36,6 +46,7 @@ export interface Transaction {
   memo: string;
   amountCents: number;
   cleared: ClearedStatus;
+  flag: FlagColor | null;
   categoryId: number | null;
   categoryName: string | null;
   hasCategoryLine: boolean;
@@ -80,6 +91,7 @@ export interface TransactionInput {
   categoryId?: number | null;
   lines?: LineInput[];
   transferAccountId: number | null;
+  flag?: FlagColor | null;
 }
 
 /** YNAB's frequencies; `never` means once. */
@@ -108,6 +120,7 @@ export interface ScheduledTransaction {
   nextDate: string;
   payee: string;
   memo: string;
+  flag: FlagColor | null;
   amountCents: number;
   categoryId: number | null;
   categoryName: string | null;
@@ -152,7 +165,7 @@ export interface NetWorthPoint {
 export type TransactionDraft = Pick<
   Transaction,
   'date' | 'payee' | 'memo' | 'amountCents' | 'categoryId' | 'transferAccountId' | 'lines'
->;
+> & { flag?: Transaction['flag'] };
 
 export interface Category {
   id: number;
@@ -228,7 +241,18 @@ export interface ImportNotes {
   unpairedTransfers: number;
   unapproved: number;
   flagged: number;
+  flagNames: { color: FlagColor; name: string }[];
   skippedSchedules: SkippedSchedule[];
+  toFix: TransactionToFix[];
+}
+
+/** A transaction to look at after importing. */
+export interface TransactionToFix {
+  reason: 'uncategorized' | 'unpairedTransfer';
+  date: string;
+  accountName: string;
+  payee: string;
+  amountCents: number;
 }
 
 export interface ImportCounts {
@@ -345,6 +369,10 @@ export const api = {
   searchTransactions: (filters: URLSearchParams) =>
     request<SearchResults>(`/transactions?${filters}`),
   listPayees: () => request<Payee[]>('/payees'),
+  listFlags: () => request<Flag[]>('/flags'),
+  /** A blank name clears it. */
+  renameFlag: (color: FlagColor, name: string) =>
+    request<Flag[]>(`/flags/${color}`, 'PUT', { name }),
   listScheduled: (accountId: number) =>
     request<ScheduledTransaction[]>(`/accounts/${accountId}/scheduled`),
   createScheduled: (accountId: number, input: ScheduleInput) =>

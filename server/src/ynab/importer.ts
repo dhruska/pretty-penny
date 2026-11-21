@@ -4,6 +4,7 @@ import {
   accounts,
   categories,
   categoryGroups,
+  flagNames,
   monthlyAssignments,
   READY_TO_ASSIGN_KEY,
   scheduledTransactions,
@@ -41,6 +42,15 @@ export interface ImportResult {
   accountIds: Map<string, number>;
   categoryIds: Map<string, number>;
   skippedSchedules: SkippedSchedule[];
+}
+
+/**
+ * Why a step failed, in words. A database error is wrapped in one that only shows the query, so
+ * use the database's own message, such as a missing column, when there is one.
+ */
+export function failureReason(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  return error.cause instanceof Error ? error.cause.message : error.message;
 }
 
 /** Noon local time on a date, so the stored timestamp shows that date in any nearby time zone. */
@@ -89,6 +99,13 @@ export async function runImport(tx: Executor, plan: ImportPlan): Promise<ImportR
       memo: line.memo,
     }));
 
+  for (const { color, name } of plan.preview.notes.flagNames) {
+    await tx
+      .insert(flagNames)
+      .values({ color, name })
+      .onConflictDoUpdate({ target: flagNames.color, set: { name } });
+  }
+
   // Accounts start open, so their transactions can be added, and closed at the end.
   const accountIds = new Map<string, number>();
   for (const account of plan.accounts) {
@@ -124,6 +141,7 @@ export async function runImport(tx: Executor, plan: ImportPlan): Promise<ImportR
       payee: planned.payee,
       memo: planned.memo,
       amountCents: planned.amountCents,
+      flag: planned.flag,
       transferAccountId: planned.transfer ? accountIds.get(planned.transfer.accountYnabId)! : null,
       ...(planned.lines
         ? { lines: lineInputs(planned.lines) }
@@ -134,12 +152,16 @@ export async function runImport(tx: Executor, plan: ImportPlan): Promise<ImportR
         cleared: planned.cleared,
         isStartingBalance: planned.isStartingBalance,
         ...(planned.transfer && {
-          pair: { cleared: planned.transfer.cleared, memo: planned.transfer.memo },
+          pair: {
+            cleared: planned.transfer.cleared,
+            memo: planned.transfer.memo,
+            flag: planned.transfer.flag,
+          },
         }),
       });
     } catch (error) {
       const account = plan.accounts.find((item) => item.ynabId === planned.accountYnabId)!;
-      const reason = error instanceof Error ? error.message : String(error);
+      const reason = failureReason(error);
       throw new HttpError(
         422,
         `Couldn’t import the ${planned.date} transaction in ${account.name}: ${reason}`,
@@ -195,6 +217,7 @@ export async function runImport(tx: Executor, plan: ImportPlan): Promise<ImportR
       nextDate: schedule.nextDate,
       payeeId: body.transferAccountId ? null : await resolvePayee(tx, schedule.payee),
       memo: schedule.memo.trim(),
+      flag: schedule.flag,
       amountCents: schedule.amountCents,
       categoryId: body.lines ? null : (body.categoryId ?? null),
       lines: body.lines?.map((line) => ({ ...line, memo: line.memo?.trim() ?? '' })) ?? null,

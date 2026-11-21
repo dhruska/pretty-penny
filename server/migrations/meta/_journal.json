@@ -57,6 +57,13 @@
       "when": 1794373521403,
       "tag": "0007_scheduled_transactions",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795229840128,
+      "tag": "0008_flags",
+      "breakpoints": true
     }
   ]
 }

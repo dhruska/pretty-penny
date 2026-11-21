@@ -1,4 +1,10 @@
-import { api, isReconciledError, type Transaction, type TransactionInput } from '@/api';
+import {
+  api,
+  isReconciledError,
+  type FlagColor,
+  type Transaction,
+  type TransactionInput,
+} from '@/api';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,6 +21,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from 'cn';
 import { Fragment, useState } from 'react';
 import { ConfirmDelete } from './ConfirmDelete';
+import { FlagPicker } from './FlagPicker';
 import { Money } from './Money';
 import { TransactionForm } from './TransactionForm';
 
@@ -77,6 +84,23 @@ function ClearedToggle({ transaction }: { transaction: Transaction }) {
     >
       C
     </button>
+  );
+}
+
+/** A transaction's flag, changed right in the register. Flags don't affect balances, so even a
+ * reconciled transaction changes without asking. */
+function RegisterFlag({ transaction }: { transaction: Transaction }) {
+  const queryClient = useQueryClient();
+  const setFlag = useMutation({
+    mutationFn: (flag: FlagColor | null) => api.updateTransaction(transaction.id, { flag }),
+    onSuccess: () => queryClient.invalidateQueries(),
+  });
+  return (
+    <FlagPicker
+      value={transaction.flag}
+      disabled={setFlag.isPending}
+      onChange={(flag) => setFlag.mutate(flag)}
+    />
   );
 }
 
@@ -167,7 +191,8 @@ export function TransactionRegister({
         <table className="w-full min-w-[46rem] text-sm">
           <thead className="border-b text-left text-muted-foreground">
             <tr>
-              <th className="px-2 py-2 font-medium">Date</th>
+              {/* The flag sits beside the date, as YNAB's flag column does, without widening the table. */}
+              <th className="py-2 pr-2 pl-9 font-medium">Date</th>
               {showAccount && <th className="px-2 py-2 font-medium">Account</th>}
               <th className="px-2 py-2 font-medium">Payee</th>
               <th className="px-2 py-2 font-medium">Category</th>
@@ -212,8 +237,11 @@ export function TransactionRegister({
               return (
                 <Fragment key={transaction.id}>
                   <tr className="border-b last:border-0">
-                    <td className="px-2 py-1.5 whitespace-nowrap tabular-nums">
-                      {transaction.date}
+                    <td className="py-1 pr-2 pl-2 whitespace-nowrap tabular-nums">
+                      <span className="flex items-center gap-1">
+                        <RegisterFlag transaction={transaction} />
+                        {transaction.date}
+                      </span>
                     </td>
                     {showAccount && <td className="px-2 py-1.5">{transaction.accountName}</td>}
                     <td className="px-2 py-1.5">{payeeLabel(transaction)}</td>

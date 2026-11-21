@@ -414,6 +414,7 @@ export function sampleYnabPlan(): YnabPlan {
         category_id: 'cat-groceries',
         approved: false,
         flag_color: 'red',
+        flag_name: 'Check this',
       }),
       ...transfer(
         ['t-visa-pay-oct', 't-visa-pay-oct-in'],
@@ -421,7 +422,8 @@ export function sampleYnabPlan(): YnabPlan {
         'acct-visa',
         '2026-10-15',
         320,
-        [{ cleared: 'cleared' }, {}],
+        // Only the card's side is flagged; each side keeps its own flag.
+        [{ cleared: 'cleared' }, { flag_color: 'blue', flag_name: 'Reimbursable' }],
       ),
       transaction('t-mystery', 'acct-checking', '2026-10-20', -40, {
         payee_id: 'payee-mystery',
@@ -439,6 +441,8 @@ export function sampleYnabPlan(): YnabPlan {
       transaction('t-deleted', 'acct-checking', '2026-11-04', -999, {
         payee_id: 'payee-market',
         category_id: 'cat-groceries',
+        flag_color: 'red',
+        flag_name: 'Deleted name',
         deleted: true,
       }),
     ],
@@ -448,6 +452,7 @@ export function sampleYnabPlan(): YnabPlan {
       scheduled('st-rent', 'acct-checking', 'monthly', ['2026-01-31', '2026-11-30'], -1200, {
         payee_id: 'payee-landlord',
         category_id: 'cat-rent',
+        flag_color: 'green',
       }),
       scheduled('st-bigbox', 'acct-visa', 'monthly', ['2026-12-05', '2026-12-05'], -100, {
         payee_id: 'payee-bigbox',

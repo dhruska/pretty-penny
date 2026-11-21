@@ -1,5 +1,12 @@
-import type { FractionalAmount, ImportNotes, ImportReport, ReadyToAssignPartKey } from '@/api';
+import type {
+  FractionalAmount,
+  ImportNotes,
+  TransactionToFix,
+  ImportReport,
+  ReadyToAssignPartKey,
+} from '@/api';
 import { formatCents } from './money';
+import { flagLabel } from './flags';
 import { formatMonth } from './months';
 
 const YNAB_TYPE_LABELS: Record<string, string> = {
@@ -102,12 +109,28 @@ export function noteLines(notes: ImportNotes): string[] {
     );
   }
   if (notes.flagged > 0) {
-    lines.push(`Flags on ${plural(notes.flagged, 'transaction', 'transactions')} aren’t imported.`);
+    const names = notes.flagNames
+      .map((flag) => `${flagLabel(flag.color, undefined)} is “${flag.name}”`)
+      .join(', ');
+    lines.push(
+      `${plural(notes.flagged, 'flagged transaction keeps its flag', 'flagged transactions keep their flags')}${names ? `. Flag names: ${names}` : ''}.`,
+    );
   }
   lines.push(
     'Targets, category and account notes, and payee locations aren’t imported. Transaction memos are.',
   );
   return lines;
+}
+
+const TO_FIX_REASONS: Record<TransactionToFix['reason'], string> = {
+  uncategorized: 'needs a category',
+  unpairedTransfer: 'transfer missing its other side in YNAB',
+};
+
+/** A transaction to look at after importing, such as "Oct 20, 2026 · Checking · Shop: …". */
+export function toFixLine(item: TransactionToFix): string {
+  const payee = item.payee || 'No payee';
+  return `${formatDate(item.date)} · ${item.accountName} · ${payee} · ${formatCents(item.amountCents)}: ${TO_FIX_REASONS[item.reason]}`;
 }
 
 /** A skipped scheduled transaction, such as "Rent in Checking, next on Dec 1, 2026: …". */
@@ -174,6 +197,11 @@ export function reportText(report: ImportReport): string {
     'Imported',
     `  ${plural(counts.accounts, 'account', 'accounts')}, ${plural(counts.categories, 'category', 'categories')} in ${plural(counts.categoryGroups, 'group', 'groups')}, ${plural(counts.transactions, 'transaction', 'transactions')}, ${plural(counts.payees, 'payee', 'payees')}, ${plural(counts.scheduled, 'scheduled transaction', 'scheduled transactions')}, ${plural(counts.months, 'month', 'months')} of assignments`,
   );
+
+  if (report.notes.toFix.length > 0) {
+    out.push('', 'To fix after importing');
+    for (const item of report.notes.toFix) out.push(`  ${toFixLine(item)}`);
+  }
 
   out.push('', 'Changes from YNAB');
   for (const line of noteLines(report.notes)) out.push(`  ${line}`);

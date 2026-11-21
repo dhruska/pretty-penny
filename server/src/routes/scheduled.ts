@@ -3,6 +3,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import type { FastifyInstance } from 'fastify';
 import type { Db } from '../db/client.js';
 import { accounts, categories, payees, scheduledTransactions } from '../db/schema.js';
+import type { FlagColor } from '../flags.js';
 import { localToday, occurrence, FREQUENCIES, type Frequency } from '../schedule.js';
 import { advanceSchedule, postDueScheduled, postNextOccurrence } from '../scheduled.js';
 import { resolvePayee } from './payees.js';
@@ -49,6 +50,7 @@ export function registerScheduledRoutes(app: FastifyInstance, db: Db, today = lo
         nextDate: occurrence(body.date, body.frequency, 0)!,
         payeeId: body.transferAccountId ? null : await resolvePayee(tx, body.payee),
         memo: body.memo?.trim() ?? '',
+        flag: body.flag ?? null,
         amountCents: body.amountCents,
         categoryId: body.lines ? null : (body.categoryId ?? null),
         lines: body.lines?.map((line) => ({ ...line, memo: line.memo?.trim() ?? '' })) ?? null,
@@ -69,6 +71,7 @@ export function registerScheduledRoutes(app: FastifyInstance, db: Db, today = lo
           nextDate: scheduledTransactions.nextDate,
           payee: payees.name,
           memo: scheduledTransactions.memo,
+          flag: scheduledTransactions.flag,
           amountCents: scheduledTransactions.amountCents,
           categoryId: scheduledTransactions.categoryId,
           categoryName: categories.name,
@@ -82,7 +85,11 @@ export function registerScheduledRoutes(app: FastifyInstance, db: Db, today = lo
         .leftJoin(transferAccount, eq(transferAccount.id, scheduledTransactions.transferAccountId))
         .where(eq(scheduledTransactions.accountId, request.params.id))
         .orderBy(asc(scheduledTransactions.nextDate), asc(scheduledTransactions.id));
-      return rows.map((row) => ({ ...row, payee: row.payee ?? '' }));
+      return rows.map((row) => ({
+        ...row,
+        payee: row.payee ?? '',
+        flag: row.flag as FlagColor | null,
+      }));
     },
   );
 
