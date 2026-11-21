@@ -138,3 +138,30 @@ test('register rows show friendly dates and open for editing when clicked', asyn
     page.getByRole('form', { name: 'Edit transaction' }).getByLabel('Payee'),
   ).toHaveValue('Corner Market');
 });
+
+test('Add transaction opens a form that stays open for the next one until closed', async ({
+  page,
+  request,
+}) => {
+  const checking = await post<{ id: number }>(request, '/api/accounts', {
+    name: 'Checking',
+    startingBalanceCents: 1_000_00,
+    date: thisMonthDate(1),
+  });
+  await page.goto(`/accounts/${checking.id}`);
+  const form = page.getByRole('form', { name: 'Add transaction' });
+  await expect(form).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  await expect(form.getByLabel('Payee')).toBeFocused();
+  for (const payee of ['Bakery', 'Florist']) {
+    await form.getByLabel('Payee').fill(payee);
+    await form.getByLabel('Outflow').fill('5');
+    await form.getByRole('button', { name: 'Add transaction' }).click();
+    await expect(page.getByRole('row').filter({ hasText: payee })).toBeVisible();
+    await expect(form.getByLabel('Payee')).toBeFocused();
+  }
+
+  await form.getByRole('button', { name: 'Close' }).click();
+  await expect(form).toHaveCount(0);
+});

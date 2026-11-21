@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { resetDb } from './reset-db';
+import { openAddForm } from './support/forms';
 
 test.beforeEach(() => resetDb());
 
@@ -123,7 +124,7 @@ test('clearing and flagging show at once, and deleting offers Undo', async ({ pa
 test('confirms what happened with a short message', async ({ page, request }) => {
   const { checking } = await setUp(request);
   await page.goto(`/accounts/${checking.id}`);
-  const form = page.getByRole('form', { name: 'Add transaction' });
+  const form = await openAddForm(page);
   await form.getByLabel('Payee').fill('Bakery');
   await form.getByLabel('Outflow').fill('6');
   await form.getByRole('button', { name: 'Add transaction' }).click();

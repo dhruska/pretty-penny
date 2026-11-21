@@ -36,6 +36,8 @@ interface TransactionFormProps {
   /** `frequency` is null when the transaction doesn't repeat. */
   onSubmit: (input: TransactionInput, frequency: Frequency | null) => Promise<void>;
   onCancel?: () => void;
+  /** The cancel button's label; "Close" for a form that stays open between adds. */
+  cancelLabel?: string;
 }
 
 export function TransactionForm({
@@ -47,6 +49,7 @@ export function TransactionForm({
   initialFrequency,
   onSubmit,
   onCancel,
+  cancelLabel = 'Cancel',
 }: TransactionFormProps) {
   const id = useId();
   const [frequency, setFrequency] = useState<Frequency | null>(initialFrequency ?? null);
@@ -339,7 +342,7 @@ export function TransactionForm({
         </Button>
         {onCancel && (
           <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
-            Cancel
+            {cancelLabel}
           </Button>
         )}
         <div className="ml-auto flex items-center gap-1 text-sm text-muted-foreground">

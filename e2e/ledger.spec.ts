@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { resetDb } from './reset-db';
+import { openAddForm } from './support/forms';
 
 test.beforeEach(() => resetDb());
 
@@ -15,7 +16,7 @@ async function addTransaction(
   page: Page,
   fields: { payee: string; outflow?: string; inflow?: string },
 ) {
-  const form = page.getByRole('form', { name: 'Add transaction' });
+  const form = await openAddForm(page);
   await form.getByLabel('Payee').fill(fields.payee);
   if (fields.outflow) await form.getByLabel('Outflow').fill(fields.outflow);
   if (fields.inflow) await form.getByLabel('Inflow').fill(fields.inflow);

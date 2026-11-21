@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTrigger } from '@/components
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useIsPhone } from '@/lib/useIsPhone';
+import { Plus } from 'lucide-react';
 import { accountTypeLabel } from '@/lib/accountTypes';
 import { today } from '@/lib/dates';
 import { formatCents } from '@/lib/money';
@@ -25,7 +26,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { useDeferredValue, useRef, useState, type FormEvent } from 'react';
+import { useDeferredValue, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
 
 export function AccountPage() {
@@ -65,12 +66,18 @@ function AccountDetails({ account }: { account: Account }) {
   });
 
   const addFormRef = useRef<HTMLElement>(null);
+  const focusPayee = () =>
+    addFormRef.current?.querySelector<HTMLInputElement>('input[list]')?.focus();
+  // Opening the add form puts the cursor in Payee, ready to type.
+  useEffect(() => {
+    if (isAdding && !isPhone) focusPayee();
+  }, [isAdding, isPhone]);
   const filterRef = useRef<HTMLInputElement>(null);
   useShortcuts({
     n: () => {
       if (account.closed) return;
-      if (isPhone) setIsAdding(true);
-      else addFormRef.current?.querySelector<HTMLInputElement>('input[list]')?.focus();
+      if (isAdding) focusPayee();
+      else setIsAdding(true);
     },
     '/': () => filterRef.current?.focus(),
   });
@@ -257,6 +264,12 @@ function AccountDetails({ account }: { account: Account }) {
             />
             {!account.closed && <ReconcileButton account={account} />}
             {otherActions}
+            {!account.closed && !isAdding && (
+              <Button size="sm" className="ml-1" onClick={() => setIsAdding(true)}>
+                <Plus aria-hidden="true" className="size-4" />
+                Add transaction
+              </Button>
+            )}
           </div>
         )}
       </header>
@@ -289,15 +302,28 @@ function AccountDetails({ account }: { account: Account }) {
           </DialogContent>
         </Dialog>
       ) : (
-        <section ref={addFormRef} className="rounded-lg border bg-card p-3">
-          <TransactionForm
-            label="Add transaction"
-            submitLabel="Add transaction"
-            account={account}
-            allowRepeat
-            onSubmit={addTransaction}
-          />
-        </section>
+        // On laptops the form opens above the register and stays open after each add, for
+        // entering several in a row, until it's closed.
+        isAdding && (
+          <section
+            ref={addFormRef}
+            aria-label="New transaction"
+            className="rounded-xl border border-primary/40 bg-card p-3 shadow-sm"
+          >
+            <TransactionForm
+              label="Add transaction"
+              submitLabel="Add transaction"
+              account={account}
+              allowRepeat
+              onSubmit={async (input, frequency) => {
+                await addTransaction(input, frequency);
+                focusPayee();
+              }}
+              onCancel={() => setIsAdding(false)}
+              cancelLabel="Close"
+            />
+          </section>
+        )
       )}
 
       <ScheduledList account={account} />

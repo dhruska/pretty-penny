@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { resetDb } from './reset-db';
+import { openAddForm } from './support/forms';
 
 test.beforeEach(() => resetDb());
 
@@ -45,7 +46,7 @@ test('splits a purchase across categories', async ({ page, request }) => {
   const checking = await setUp(request);
   await page.goto(`/accounts/${checking.id}`);
 
-  const form = page.getByRole('form', { name: 'Add transaction' });
+  const form = await openAddForm(page);
   await form.getByLabel('Payee').fill('Target');
   await form.getByLabel('Outflow').fill('100');
   await form.getByRole('button', { name: 'Split' }).click();
@@ -73,7 +74,7 @@ test('spreads the remaining amount across the lines', async ({ page, request }) 
   const checking = await setUp(request);
   await page.goto(`/accounts/${checking.id}`);
 
-  const form = page.getByRole('form', { name: 'Add transaction' });
+  const form = await openAddForm(page);
   await form.getByLabel('Payee').fill('Hardware Store');
   await form.getByLabel('Outflow').fill('110');
   await form.getByRole('button', { name: 'Split' }).click();
@@ -95,7 +96,7 @@ test('turns a split back into one category', async ({ page, request }) => {
   const checking = await setUp(request);
   await page.goto(`/accounts/${checking.id}`);
 
-  const form = page.getByRole('form', { name: 'Add transaction' });
+  const form = await openAddForm(page);
   await form.getByLabel('Payee').fill('Target');
   await form.getByLabel('Outflow').fill('100');
   await form.getByRole('button', { name: 'Split' }).click();

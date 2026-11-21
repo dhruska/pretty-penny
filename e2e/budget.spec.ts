@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { resetDb } from './reset-db';
+import { openAddForm } from './support/forms';
 
 test.beforeEach(() => resetDb());
 
@@ -41,7 +42,7 @@ async function assign(page: Page, category: string, amount: string) {
 }
 
 async function addTransaction(page: Page, payee: string, outflow: string, category?: string) {
-  const form = page.getByRole('form', { name: 'Add transaction' });
+  const form = await openAddForm(page);
   await form.getByLabel('Payee').fill(payee);
   if (category) await form.getByLabel('Category').selectOption({ label: category });
   await form.getByLabel('Outflow').fill(outflow);

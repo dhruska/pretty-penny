@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { resetDb } from './reset-db';
+import { openAddForm } from './support/forms';
 
 test.beforeEach(() => resetDb());
 
@@ -32,7 +33,7 @@ function scheduled(page: Page) {
 }
 
 async function addRepeating(page: Page, date: string, repeat: string) {
-  const form = page.getByRole('form', { name: 'Add transaction' });
+  const form = await openAddForm(page);
   await form.getByLabel('Date').fill(date);
   await form.getByLabel('Repeat').selectOption({ label: repeat });
   await form.getByLabel('Payee').fill('Oak Street Rentals');
@@ -80,7 +81,7 @@ test('turns a future-dated transaction into a one-time scheduled transaction', a
   const due = daysFromToday(3);
   await page.goto(`/accounts/${checking.id}`);
 
-  const form = page.getByRole('form', { name: 'Add transaction' });
+  const form = await openAddForm(page);
   await form.getByLabel('Date').fill(due);
   await form.getByLabel('Payee').fill('Dentist');
   await form.getByLabel('Outflow').fill('120');

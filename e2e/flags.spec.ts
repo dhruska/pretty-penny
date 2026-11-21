@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
 import { resetDb } from './reset-db';
+import { openAddForm } from './support/forms';
 
 test.beforeEach(() => resetDb());
 
@@ -43,7 +44,7 @@ test('flags a transaction, names the color and filters by it', async ({ page, re
   await expect(hardware.getByRole('button', { name: 'Flag: Reimbursable' })).toBeVisible();
 
   // New transactions can be flagged from the form.
-  const form = page.getByRole('form', { name: 'Add transaction' });
+  const form = await openAddForm(page);
   await form.getByLabel('Payee').fill('Pharmacy');
   await form.getByLabel('Outflow').fill('8');
   await form.getByRole('button', { name: 'Flag: No flag' }).click();

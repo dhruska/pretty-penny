@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { resetDb } from './reset-db';
+import { openAddForm } from './support/forms';
 
 test.beforeEach(() => resetDb());
 
@@ -37,7 +38,7 @@ async function addTransaction(
     inflow?: string;
   },
 ) {
-  const form = page.getByRole('form', { name: 'Add transaction' });
+  const form = await openAddForm(page);
   if (fields.transfer) await form.getByLabel('Transfer').selectOption({ label: fields.transfer });
   if (fields.payee) await form.getByLabel('Payee').fill(fields.payee);
   if (fields.category) await form.getByLabel('Category').selectOption({ label: fields.category });
@@ -56,6 +57,7 @@ test('pays a credit card by transfer without changing the budget', async ({ page
   await expect(sidebarAccount(page, 'Card')).toContainText('-$40.00');
 
   await sidebarAccount(page, 'Checking').click();
+  await expect(page.getByRole('heading', { name: 'Checking' })).toBeVisible();
   await addTransaction(page, { transfer: 'Card', outflow: '40' });
   await expect(row(page, 'Transfer: Card')).toContainText('$40.00');
   await expect(sidebarAccount(page, 'Card')).toContainText('$0.00');
@@ -86,7 +88,7 @@ test('tracks off-budget accounts and categorizes money leaving the budget', asyn
   await expect(page.getByRole('region', { name: 'Ready to Assign' })).toContainText('$1,000.00');
 
   await sidebarAccount(page, 'Checking').click();
-  const form = page.getByRole('form', { name: 'Add transaction' });
+  const form = await openAddForm(page);
   await form.getByLabel('Transfer').selectOption({ label: 'Brokerage' });
   await expect(form.getByLabel('Category')).toBeEnabled();
   await addTransaction(page, { category: 'Investing', outflow: '100' });
@@ -129,10 +131,11 @@ test('closes an account with a balance and reopens it', async ({ page }) => {
   await expect(page.getByText('This account is closed')).toBeVisible();
   await expect(row(page, 'Balance Adjustment')).toContainText('$50.00');
   await expect(page.getByRole('form', { name: 'Add transaction' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Add transaction' })).toHaveCount(0);
   await page.getByText('Closed (1)').click();
   await expect(sidebarAccount(page, 'Old Savings')).toContainText('$0.00');
 
   await page.getByRole('button', { name: 'Reopen account' }).click();
-  await expect(page.getByRole('form', { name: 'Add transaction' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add transaction' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Budget accounts' })).toContainText('Old Savings');
 });
