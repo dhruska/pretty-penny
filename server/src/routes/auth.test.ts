@@ -183,6 +183,42 @@ describe('sessions', () => {
   });
 });
 
+describe('behind a proxy', () => {
+  it('trusts forwarded headers only from this machine', async () => {
+    await setPassword(db, PASSWORD);
+    const viaProxy = await login(PASSWORD, { 'x-forwarded-proto': 'https' });
+    expect(String(viaProxy.headers['set-cookie'])).toMatch(/; Secure$/);
+
+    // From anywhere else, a request can't claim it came over HTTPS.
+    const direct = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { password: PASSWORD },
+      headers: { 'x-forwarded-proto': 'https' },
+      remoteAddress: '10.0.0.5',
+    });
+    expect(String(direct.headers['set-cookie'])).not.toContain('Secure');
+  });
+
+  it('can always mark the cookie Secure, and trusts the app’s public address', async () => {
+    const proxied = buildApp(db, {
+      wrongPasswordDelayMs: 0,
+      secureCookies: true,
+      publicUrl: 'https://mini.example.ts.net/',
+    });
+    await setPassword(db, PASSWORD);
+    const response = await proxied.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { password: PASSWORD },
+      headers: { origin: 'https://mini.example.ts.net', host: '127.0.0.1:3001' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(String(response.headers['set-cookie'])).toMatch(/; Secure$/);
+    await proxied.close();
+  });
+});
+
 describe('changes from other sites', () => {
   it('are refused, even with a valid session', async () => {
     const cookie = await signIn();
@@ -211,6 +247,20 @@ describe('changes from other sites', () => {
         })
       ).statusCode,
     ).toBe(201);
+    // A forwarded host counts only from this machine's proxy.
+    const spoofed = await app.inject({
+      method: 'POST',
+      url: '/api/accounts',
+      headers: {
+        cookie,
+        origin: 'https://evil.example',
+        host: 'mini.tail.ts.net',
+        'x-forwarded-host': 'evil.example',
+      },
+      payload: { name: 'Checking', startingBalanceCents: 0, date: '2026-11-20' },
+      remoteAddress: '10.0.0.5',
+    });
+    expect(spoofed.statusCode).toBe(403);
     // Reading isn't a change, so other sites' requests just need a session.
     expect((await getAccounts(cookie)).statusCode).toBe(200);
   });

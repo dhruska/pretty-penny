@@ -70,6 +70,7 @@ Run `nvm use` in new terminal sessions so you're on the project's Node version.
 | `npm run lint`          | Checks code with ESLint and Prettier           |
 | `npm run format`        | Formats code with Prettier                     |
 | `npm run build`         | Type-checks and builds the client and server   |
+| `npm start`             | Runs the built app in production mode          |
 | `npm run db:generate`   | Generates a migration from schema changes      |
 | `npm run db:migrate`    | Applies migrations to `DATABASE_URL`           |
 | `npm run set-password`  | Sets or changes the sign-in password           |
@@ -96,6 +97,10 @@ Importing only works on an empty budget. To start over in development, recreate 
 /opt/homebrew/opt/postgresql@17/bin/createdb pretty_penny_dev
 npm run db:migrate
 ```
+
+## Running it at home
+
+To run Pretty Penny on a Mac that stays on, such as a Mac mini, and use it from your phone over Tailscale, follow [Running Pretty Penny at home](docs/self-hosting.md).
 
 ## Keeping data private
 

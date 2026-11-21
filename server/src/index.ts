@@ -1,13 +1,33 @@
+import { fileURLToPath } from 'node:url';
 import { buildApp } from './app.js';
 import { createDb } from './db/client.js';
-import { getApiPort, getDatabaseUrl, getYnabApiUrl } from './env.js';
+import {
+  getApiPort,
+  getDatabaseUrl,
+  getHost,
+  getPublicUrl,
+  getSecureCookies,
+  getYnabApiUrl,
+  isProduction,
+} from './env.js';
 import { localToday } from './schedule.js';
 import { postDueScheduled } from './scheduled.js';
 
 const HOUR_MS = 60 * 60 * 1000;
 
 const { db } = createDb(getDatabaseUrl());
-const app = buildApp(db, { logger: true, ynabApiUrl: getYnabApiUrl() });
+const production = isProduction();
+const app = buildApp(db, {
+  logger: true,
+  ynabApiUrl: getYnabApiUrl(),
+  secureCookies: getSecureCookies(),
+  publicUrl: getPublicUrl(),
+  // Production serves the built client and logs only startup, warnings and errors.
+  logRequests: !production,
+  ...(production && {
+    clientDir: fileURLToPath(new URL('../../client/dist', import.meta.url)),
+  }),
+});
 
 /** Posts scheduled transactions that have come due, as YNAB does on their date. */
 async function postScheduled() {
@@ -22,7 +42,7 @@ async function postScheduled() {
   }
 }
 
-await app.listen({ port: getApiPort(), host: '127.0.0.1' });
+await app.listen({ port: getApiPort(), host: getHost() });
 
 await postScheduled();
 setInterval(postScheduled, HOUR_MS);

@@ -34,6 +34,10 @@ export interface AuthOptions {
   requireLogin?: boolean;
   /** The pause after a wrong password, which slows down guessing. */
   wrongPasswordDelayMs?: number;
+  /** Marks the session cookie HTTPS-only, as when served through `tailscale serve`. */
+  secureCookies?: boolean;
+  /** The app's public address, such as https://mac-mini.example.ts.net, trusted for changes. */
+  publicUrl?: string;
   now?: () => Date;
 }
 
@@ -56,15 +60,12 @@ export async function setPassword(db: Db, password: string) {
   });
 }
 
-/** Whether the page was reached over HTTPS, directly or through a proxy such as Tailscale. */
-const isHttps = (request: FastifyRequest) =>
-  request.protocol === 'https' || request.headers['x-forwarded-proto'] === 'https';
-
 function setSessionCookie(
   request: FastifyRequest,
   reply: FastifyReply,
   id: string,
   maxAgeMs: number,
+  secure: boolean,
 ) {
   const parts = [
     `${SESSION_COOKIE}=${id}`,
@@ -73,20 +74,22 @@ function setSessionCookie(
     'SameSite=Lax',
     `Max-Age=${Math.floor(maxAgeMs / 1000)}`,
   ];
-  if (isHttps(request)) parts.push('Secure');
+  // Over HTTPS, directly or through a trusted proxy such as Tailscale's, the cookie is HTTPS-only.
+  if (secure || request.protocol === 'https') parts.push('Secure');
   reply.header('set-cookie', parts.join('; '));
 }
 
 /**
  * Whether a request that changes data came from the app's own pages. Browsers send an Origin
- * header with these requests; another site's would name that site instead.
+ * header with these requests; another site's would name that site instead. The host comes from
+ * a forwarded header only when a trusted proxy on this machine sent it.
  */
-function fromSameSite(request: FastifyRequest) {
+function fromSameSite(request: FastifyRequest, publicOrigin: string | null) {
   const origin = request.headers.origin;
   if (!origin) return true;
-  const hosts = [request.headers.host, request.headers['x-forwarded-host']].filter(Boolean);
+  if (origin === publicOrigin) return true;
   try {
-    return hosts.includes(new URL(origin).host);
+    return new URL(origin).host === request.host;
   } catch {
     return false;
   }
@@ -96,6 +99,8 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db, options: AuthOp
   const requireLogin = options.requireLogin ?? true;
   const wrongPasswordDelayMs = options.wrongPasswordDelayMs ?? 1000;
   const now = options.now ?? (() => new Date());
+  const secure = options.secureCookies ?? false;
+  const publicOrigin = options.publicUrl ? new URL(options.publicUrl).origin : null;
 
   async function currentSession(request: FastifyRequest) {
     const id = readCookie(request.headers.cookie, SESSION_COOKIE);
@@ -110,7 +115,10 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db, options: AuthOp
   app.addHook('onRequest', async (request, reply) => {
     if (!request.url.startsWith('/api/')) return;
 
-    if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method) && !fromSameSite(request)) {
+    if (
+      !['GET', 'HEAD', 'OPTIONS'].includes(request.method) &&
+      !fromSameSite(request, publicOrigin)
+    ) {
       return reply.code(403).send({ message: 'Changes must come from Pretty Penny itself.' });
     }
     if (!requireLogin || OPEN_ROUTES.has(`${request.method} ${request.routeOptions.url}`)) return;
@@ -127,7 +135,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db, options: AuthOp
         .update(sessions)
         .set({ lastUsedAt: time, expiresAt: new Date(time.getTime() + SESSION_MS) })
         .where(eq(sessions.idHash, session.idHash));
-      setSessionCookie(request, reply, session.id, SESSION_MS);
+      setSessionCookie(request, reply, session.id, SESSION_MS, secure);
     }
   });
 
@@ -172,7 +180,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db, options: AuthOp
         lastUsedAt: time,
         expiresAt: new Date(time.getTime() + SESSION_MS),
       });
-      setSessionCookie(request, reply, id, SESSION_MS);
+      setSessionCookie(request, reply, id, SESSION_MS, secure);
       return { signedIn: true };
     },
   );
@@ -180,7 +188,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db, options: AuthOp
   app.post('/api/auth/logout', async (request, reply) => {
     const id = readCookie(request.headers.cookie, SESSION_COOKIE);
     if (id) await db.delete(sessions).where(eq(sessions.idHash, hashSessionId(id)));
-    setSessionCookie(request, reply, '', 0);
+    setSessionCookie(request, reply, '', 0, secure);
     return reply.code(204).send();
   });
 }

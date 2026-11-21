@@ -25,3 +25,15 @@ export const getApiPort = () => Number(process.env.API_PORT ?? 3001);
 
 /** Browser tests point the import at a fake YNAB server; otherwise it uses YNAB's real API. */
 export const getYnabApiUrl = () => process.env.YNAB_API_URL || undefined;
+
+/** Where the server listens. Only this machine by default; a proxy such as Tailscale's is in front. */
+export const getHost = () => process.env.HOST || '127.0.0.1';
+
+/** In production, the server also serves the built client. */
+export const isProduction = () => process.env.NODE_ENV === 'production';
+
+/** Marks the session cookie HTTPS-only; set when the app is reached over HTTPS. */
+export const getSecureCookies = () => process.env.SECURE_COOKIES === 'true';
+
+/** The app's address on the tailnet, such as https://mac-mini.example.ts.net. */
+export const getPublicUrl = () => process.env.PUBLIC_URL || undefined;
