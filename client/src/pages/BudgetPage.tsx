@@ -5,6 +5,7 @@ import { CategoryManager } from '@/components/CategoryManager';
 import { Money } from '@/components/Money';
 import { Button } from '@/components/ui/button';
 import { SkeletonRows } from '@/components/ui/skeleton';
+import { monthSummary } from '@/lib/budgetSummary';
 import { currentMonth, formatMonth, isMonth, shiftMonth } from '@/lib/months';
 import { notifyError } from '@/lib/notify';
 import { applyAssignment } from '@/lib/optimistic';
@@ -37,6 +38,49 @@ function UncategorizedNotice({ uncategorized }: { uncategorized: Budget['uncateg
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/** Ready to Assign, with what was assigned and spent this month beside it. */
+function MonthSummary({ budget }: { budget: Budget }) {
+  const ready = budget.readyToAssignCents;
+  const { assignedCents, spentCents } = monthSummary(budget);
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <section
+        aria-label="Ready to Assign"
+        className="col-span-2 rounded-xl border bg-card px-5 py-4"
+      >
+        <p className="text-sm text-muted-foreground">Ready to Assign</p>
+        <Money
+          cents={ready}
+          className={cn(
+            'block text-3xl font-bold tracking-tight',
+            ready > 0 && 'text-positive',
+            ready === 0 && 'text-foreground',
+          )}
+        />
+        {ready < 0 && (
+          <p className="mt-1 text-sm text-negative">
+            More is assigned than you have. Take some back from a category.
+          </p>
+        )}
+      </section>
+      <section
+        aria-label="Assigned this month"
+        className="rounded-xl border bg-card px-4 py-3 sm:px-5 sm:py-4"
+      >
+        <p className="text-sm text-muted-foreground">Assigned this month</p>
+        <Money cents={assignedCents} className="mt-1 block text-lg font-semibold sm:text-xl" />
+      </section>
+      <section
+        aria-label="Spent this month"
+        className="rounded-xl border bg-card px-4 py-3 sm:px-5 sm:py-4"
+      >
+        <p className="text-sm text-muted-foreground">Spent this month</p>
+        <Money cents={spentCents} className="mt-1 block text-lg font-semibold sm:text-xl" />
+      </section>
     </div>
   );
 }
@@ -84,52 +128,36 @@ export function BudgetPage() {
 
   const importStatus = useQuery({ queryKey: ['import-status'], queryFn: api.importStatus });
 
-  const readyToAssign = budget.data?.readyToAssignCents ?? 0;
-
   return (
     <div className="space-y-4">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label="Previous month"
-            onClick={() => setSearchParams({ month: shiftMonth(month, -1) })}
-          >
-            <ChevronLeft aria-hidden="true" className="size-4" />
+      <header className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline"
+          size="icon-sm"
+          aria-label="Previous month"
+          onClick={() => setSearchParams({ month: shiftMonth(month, -1) })}
+        >
+          <ChevronLeft aria-hidden="true" className="size-4" />
+        </Button>
+        <h2 className="min-w-44 text-center text-2xl font-bold tracking-tight">
+          {formatMonth(month)}
+        </h2>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          aria-label="Next month"
+          onClick={() => setSearchParams({ month: shiftMonth(month, 1) })}
+        >
+          <ChevronRight aria-hidden="true" className="size-4" />
+        </Button>
+        {month !== thisMonth && (
+          <Button variant="ghost" size="sm" onClick={() => setSearchParams({})}>
+            This month
           </Button>
-          <h2 className="w-44 text-center text-xl font-semibold">{formatMonth(month)}</h2>
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label="Next month"
-            onClick={() => setSearchParams({ month: shiftMonth(month, 1) })}
-          >
-            <ChevronRight aria-hidden="true" className="size-4" />
-          </Button>
-          {month !== thisMonth && (
-            <Button variant="ghost" size="sm" onClick={() => setSearchParams({})}>
-              This month
-            </Button>
-          )}
-        </div>
-
-        {budget.data && (
-          <section
-            aria-label="Ready to Assign"
-            className={cn(
-              'rounded-lg px-4 py-2 text-right',
-              readyToAssign < 0 ? 'bg-negative/10' : 'bg-positive/10',
-            )}
-          >
-            <Money
-              cents={readyToAssign}
-              className={cn('block text-xl font-semibold', readyToAssign >= 0 && 'text-positive')}
-            />
-            <span className="text-xs text-muted-foreground">Ready to Assign</span>
-          </section>
         )}
       </header>
+
+      {budget.data && <MonthSummary budget={budget.data} />}
 
       {budget.isError && <p className="text-negative">{budget.error.message}</p>}
       {budget.data && <UncategorizedNotice uncategorized={budget.data.uncategorized} />}
@@ -146,7 +174,7 @@ export function BudgetPage() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex gap-2">
           {!isManaging && budget.data && <AutoAssignMenu budget={budget.data} />}
-          <Button variant="secondary" size="sm" onClick={() => setIsManaging(!isManaging)}>
+          <Button variant="outline" size="sm" onClick={() => setIsManaging(!isManaging)}>
             {isManaging ? 'Done' : 'Manage categories'}
           </Button>
         </div>

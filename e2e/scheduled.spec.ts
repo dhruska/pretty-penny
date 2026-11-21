@@ -133,5 +133,5 @@ test('Underfunded covers an upcoming scheduled bill', async ({ page, request }) 
   await expect(menu.getByRole('button', { name: /Underfunded/ })).toContainText('$1,800.00');
   await menu.getByRole('button', { name: /Underfunded/ }).click();
 
-  await expect(page.getByLabel('Assigned for Rent')).toHaveValue('1800.00');
+  await expect(page.getByLabel('Assigned for Rent')).toHaveValue('$1,800.00');
 });

@@ -89,7 +89,7 @@ test('moves money back to Ready to Assign', async ({ page, request }) => {
   await moveOut.getByRole('button', { name: 'Move', exact: true }).click();
 
   await expect(readyToAssign(page)).toContainText('$925.00');
-  await expect(page.getByLabel('Assigned for Groceries')).toHaveValue('75.00');
+  await expect(page.getByLabel('Assigned for Groceries')).toHaveValue('$75.00');
 });
 
 test('auto-assigns across the budget', async ({ page, request }) => {
@@ -102,7 +102,7 @@ test('auto-assigns across the budget', async ({ page, request }) => {
   const menu = page.getByRole('dialog', { name: 'Auto-assign' });
   await expect(menu.getByRole('button', { name: /Assigned last month/ })).toContainText('$800.00');
   await menu.getByRole('button', { name: /Assigned last month/ }).click();
-  await expect(page.getByLabel('Assigned for Rent')).toHaveValue('800.00');
+  await expect(page.getByLabel('Assigned for Rent')).toHaveValue('$800.00');
 
   await page.getByRole('button', { name: 'Auto-assign' }).click();
   await expect(menu.getByRole('button', { name: /Assigned last month/ })).toBeDisabled();
@@ -120,6 +120,6 @@ test('auto-assigns a single category', async ({ page, request }) => {
   const dialog = await openCategory(page, 'Groceries');
   await dialog.getByRole('button', { name: /Spent last month/ }).click();
 
-  await expect(page.getByLabel('Assigned for Groceries')).toHaveValue('80.00');
-  await expect(page.getByLabel('Assigned for Dining')).toHaveValue('0.00');
+  await expect(page.getByLabel('Assigned for Groceries')).toHaveValue('$80.00');
+  await expect(page.getByLabel('Assigned for Dining')).toHaveValue('$0.00');
 });

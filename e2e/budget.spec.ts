@@ -72,7 +72,7 @@ test('assigns money, records spending, and rolls the balance forward', async ({ 
   await expect(readyToAssign(page)).toContainText('$700.00');
 
   await page.getByRole('button', { name: 'Next month' }).click();
-  await expect(page.getByLabel('Assigned for Groceries')).toHaveValue('0.00');
+  await expect(page.getByLabel('Assigned for Groceries')).toHaveValue('$0.00');
   await expect(row(page, 'Groceries')).toContainText('$250.00');
   await expect(readyToAssign(page)).toContainText('$700.00');
 
@@ -81,7 +81,7 @@ test('assigns money, records spending, and rolls the balance forward', async ({ 
   await expect(readyToAssign(page)).toContainText('$675.00');
 
   await page.getByRole('button', { name: 'This month' }).click();
-  await expect(page.getByLabel('Assigned for Groceries')).toHaveValue('300.00');
+  await expect(page.getByLabel('Assigned for Groceries')).toHaveValue('$300.00');
 });
 
 test('flags uncategorized transactions until they have a category', async ({ page }) => {

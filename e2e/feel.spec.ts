@@ -81,7 +81,7 @@ test('a refused change is put back, with a message', async ({ page, request }) =
   await page.getByLabel('Assigned for Groceries').press('Enter');
   await expect(page.getByText('The server refused that.')).toBeVisible();
   await expect(readyToAssign(page)).toContainText('$1,000.00');
-  await expect(page.getByLabel('Assigned for Groceries')).toHaveValue('0.00');
+  await expect(page.getByLabel('Assigned for Groceries')).toHaveValue('$0.00');
 });
 
 test('clearing and flagging show at once, and deleting offers Undo', async ({ page, request }) => {
