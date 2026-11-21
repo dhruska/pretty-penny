@@ -1,20 +1,30 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
-/* Design tokens. Type sizes use Tailwind's default scale; money uses the `tabular-nums` utility. */
+/* Design tokens: "Quiet ledger" in light mode and "Night" in dark mode, chosen from the style
+   preview. Type sizes use Tailwind's default scale; money uses the `tabular-nums` utility. */
 :root {
-  --background: oklch(0.985 0.002 250);
-  --foreground: oklch(0.22 0.015 255);
-  --card: oklch(1 0 0);
+  color-scheme: light;
+  --background: #f6f7f9;
+  --foreground: #16181d;
+  --card: #ffffff;
   --card-foreground: var(--foreground);
-  --muted: oklch(0.955 0.004 250);
-  --muted-foreground: oklch(0.5 0.015 255);
-  --border: oklch(0.91 0.005 250);
-  --primary: oklch(0.45 0.13 255);
-  --primary-foreground: oklch(0.985 0.002 250);
-  --positive: oklch(0.5 0.13 150);
-  --negative: oklch(0.52 0.19 25);
-  --warning: oklch(0.55 0.13 70);
+  --sidebar: #ffffff;
+  --muted: #f3f4f6;
+  --muted-foreground: #5f6672;
+  --border: #e5e7eb;
+  --input: #dfe2e7;
+  /* Copper, from the penny: the main action and the current page, used sparingly. */
+  --primary: #a8571f;
+  --primary-foreground: #ffffff;
+  --accent-soft: #fbf1ea;
+  --accent-ink: #8f4a1f;
+  --positive: #1f7a4d;
+  --positive-foreground: #ffffff;
+  --positive-soft: #e8f5ee;
+  --negative: #b42318;
+  --negative-soft: #fdecea;
+  --warning: #9a5b00;
   /* Flag colors, as in YNAB. Flags always show a name too, so color is never the only cue. */
   --flag-red: oklch(0.58 0.2 27);
   --flag-orange: oklch(0.68 0.17 50);
@@ -27,11 +37,11 @@
   --accent: var(--muted);
   --accent-foreground: var(--foreground);
   --destructive: var(--negative);
-  --input: var(--border);
   --ring: var(--primary);
   --popover: var(--card);
   --popover-foreground: var(--foreground);
-  /* Chart colors: the first three slots of the validated dataviz palette, plus recessive chrome. */
+  /* Chart colors: the first three slots of the validated dataviz palette, plus recessive chrome.
+     Every chart also has a table, which covers slot 3's contrast on white (2.8:1). */
   --series-1: #2a78d6;
   --series-2: #eb6834;
   --series-3: #1baf7a;
@@ -41,8 +51,46 @@
   --radius: 0.5rem;
 }
 
+/* Night: its own steps, not an inversion. Chart slots are the palette's dark steps, validated on
+   the dark card (#191c23): every check passes. */
+.dark {
+  color-scheme: dark;
+  --background: #0f1115;
+  --foreground: #e8eaed;
+  --card: #191c23;
+  --sidebar: #14171d;
+  --muted: #22262e;
+  --muted-foreground: #9aa0aa;
+  --border: #262a33;
+  --input: #2e333d;
+  --primary: #e08a4f;
+  --primary-foreground: #1a0f08;
+  --accent-soft: #2a1d14;
+  --accent-ink: #f0a774;
+  --positive: #5bd49a;
+  --positive-foreground: #0f1115;
+  --positive-soft: #13261d;
+  --negative: #ff8a80;
+  --negative-soft: #2a1716;
+  --warning: #f5b85a;
+  --flag-red: oklch(0.68 0.19 27);
+  --flag-orange: oklch(0.74 0.16 50);
+  --flag-yellow: oklch(0.84 0.15 90);
+  --flag-green: oklch(0.72 0.15 150);
+  --flag-blue: oklch(0.7 0.14 250);
+  --flag-purple: oklch(0.68 0.16 305);
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --chart-grid: #262a33;
+  --chart-axis: #3a3f4a;
+  --chart-ink-muted: #9aa0aa;
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme inline {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -52,7 +100,13 @@
   --color-border: var(--border);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
   --color-positive: var(--positive);
+  --color-positive-foreground: var(--positive-foreground);
+  --color-positive-soft: var(--positive-soft);
+  --color-negative-soft: var(--negative-soft);
   --color-negative: var(--negative);
   --color-warning: var(--warning);
   --color-secondary: var(--secondary);

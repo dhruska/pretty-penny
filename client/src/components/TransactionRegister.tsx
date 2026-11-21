@@ -209,7 +209,7 @@ function ClearedToggle({ transaction }: { transaction: Transaction }) {
       className={cn(
         'inline-flex size-6 cursor-pointer items-center justify-center rounded-full border text-xs font-semibold max-md:m-2',
         isCleared
-          ? 'border-positive bg-positive text-white'
+          ? 'border-positive bg-positive text-positive-foreground'
           : 'border-border text-muted-foreground hover:border-positive',
       )}
     >

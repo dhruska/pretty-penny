@@ -1,6 +1,7 @@
 import { api, type Account } from '@/api';
 import { Skeleton } from '@/components/ui/skeleton';
 import { registerQuery } from '@/lib/queries';
+import { useTheme, type ThemeChoice } from '@/lib/theme';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from 'cn';
 import { NavLink } from 'react-router';
@@ -55,6 +56,35 @@ function AccountSection({ title, accounts }: { title: string; accounts: Account[
         ))}
       </nav>
     </section>
+  );
+}
+
+const THEMES: { value: ThemeChoice; label: string }[] = [
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+  { value: 'system', label: 'System' },
+];
+
+/** Light, dark, or follow the device, remembered on this device. */
+function ThemeSwitch() {
+  const [choice, choose] = useTheme();
+  return (
+    <div role="group" aria-label="Theme" className="mt-4 flex rounded-lg bg-muted p-0.5 text-xs">
+      {THEMES.map((theme) => (
+        <button
+          key={theme.value}
+          type="button"
+          aria-pressed={choice === theme.value}
+          onClick={() => choose(theme.value)}
+          className={cn(
+            'flex-1 cursor-pointer rounded-md px-2 py-1.5 text-muted-foreground max-md:py-2.5',
+            choice === theme.value && 'bg-card font-medium text-foreground shadow-sm',
+          )}
+        >
+          {theme.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -168,6 +198,7 @@ export function SidebarContents() {
       >
         Import from YNAB
       </NavLink>
+      <ThemeSwitch />
       <button
         type="button"
         onClick={async () => {
@@ -184,7 +215,7 @@ export function SidebarContents() {
 
 export function AccountSidebar() {
   return (
-    <aside aria-label="Accounts" className="min-h-svh w-72 shrink-0 border-r bg-card p-4">
+    <aside aria-label="Accounts" className="min-h-svh w-72 shrink-0 border-r bg-sidebar p-4">
       <h1 className="mb-4 text-lg font-semibold">Pretty Penny</h1>
       <SidebarContents />
     </aside>

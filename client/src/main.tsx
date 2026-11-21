@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { Toaster } from 'sonner';
 import { BrowserRouter, Route, Routes } from 'react-router';
 import { AppLayout } from './components/AppLayout';
+import '@fontsource-variable/inter';
 import './index.css';
 import { AccountPage } from './pages/AccountPage';
 import { AllTransactionsPage } from './pages/AllTransactionsPage';
