@@ -150,6 +150,16 @@ export function SidebarContents() {
       >
         Import from YNAB
       </NavLink>
+      <button
+        type="button"
+        onClick={async () => {
+          await api.logout();
+          window.location.assign('/login');
+        }}
+        className="mt-1 block w-full cursor-pointer rounded-md px-2 py-2.5 text-left text-sm text-muted-foreground hover:bg-muted md:py-1.5"
+      >
+        Sign out
+      </button>
     </>
   );
 }

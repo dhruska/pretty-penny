@@ -159,3 +159,22 @@ export const flagNames = pgTable('flag_names', {
   color: text().primaryKey(),
   name: text().notNull(),
 });
+
+/** App-wide settings, such as the password hash. */
+export const settings = pgTable('settings', {
+  key: text().primaryKey(),
+  value: text().notNull(),
+});
+
+/** Signed-in devices. Only a hash of each session ID is stored; the ID itself is in the cookie. */
+export const sessions = pgTable(
+  'sessions',
+  {
+    idHash: text('id_hash').primaryKey(),
+    device: text().notNull().default(''),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [index('sessions_expires_at_idx').on(table.expiresAt)],
+);

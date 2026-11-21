@@ -11,6 +11,7 @@
     "server"
   ],
   "scripts": {
+    "set-password": "npm run set-password -w server",
     "dev": "concurrently -k -n api,web -c blue,green \"npm run dev -w server\" \"npm run dev -w client\"",
     "build": "npm run build --workspaces",
     "lint": "eslint . && prettier --check .",

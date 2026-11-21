@@ -1,11 +1,12 @@
 import { api } from '@/api';
+import { signInPath } from '@/lib/signIn';
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from '@/components/ui/dialog';
 import { currentMonth } from '@/lib/months';
 import { useIsPhone } from '@/lib/useIsPhone';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from 'cn';
 import { useState } from 'react';
-import { Link, Outlet, useLocation } from 'react-router';
+import { Link, Navigate, Outlet, useLocation } from 'react-router';
 import { AccountSidebar, SidebarContents } from './AccountSidebar';
 import { Money } from './Money';
 
@@ -87,6 +88,14 @@ function PhoneTopBar() {
 
 export function AppLayout() {
   const isPhone = useIsPhone();
+  const session = useQuery({ queryKey: ['session'], queryFn: api.session });
+
+  if (session.isPending) return null;
+  if (session.isError) {
+    return <p className="p-6 text-negative">{session.error.message}</p>;
+  }
+  if (!session.data?.signedIn) return <Navigate to={signInPath()} replace />;
+
   return (
     <div className="min-h-svh md:flex">
       {isPhone ? <PhoneTopBar /> : <AccountSidebar />}

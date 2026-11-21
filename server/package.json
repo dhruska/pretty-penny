@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "set-password": "tsx src/set-password.ts",
     "dev": "tsx watch src/index.ts",
     "start:test": "tsx src/index.ts",
     "build": "tsc --noEmit && tsc -p tsconfig.build.json",

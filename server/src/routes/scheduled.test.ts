@@ -9,7 +9,7 @@ import { resetDb } from '../test/reset-db.js';
 
 const TODAY = '2026-06-15';
 const { db, close } = createDb(getTestDatabaseUrl());
-const app = buildApp(db, { today: () => TODAY });
+const app = buildApp(db, { requireLogin: false, today: () => TODAY });
 
 interface Schedule {
   id: number;

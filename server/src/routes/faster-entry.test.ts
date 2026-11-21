@@ -6,7 +6,7 @@ import { getTestDatabaseUrl } from '../env.js';
 import { resetDb } from '../test/reset-db.js';
 
 const { db, close } = createDb(getTestDatabaseUrl());
-const app = buildApp(db);
+const app = buildApp(db, { requireLogin: false });
 
 const DATE = '2026-03-10';
 

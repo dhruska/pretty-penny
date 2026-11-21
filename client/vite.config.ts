@@ -15,7 +15,9 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       proxy: {
-        '/api': `http://127.0.0.1:${env.API_PORT ?? 3001}`,
+        // Keeps the browser's Host header, which the API compares with Origin to refuse
+        // changes sent from other websites.
+        '/api': { target: `http://127.0.0.1:${env.API_PORT ?? 3001}`, changeOrigin: false },
       },
     },
     test: {

@@ -32,6 +32,7 @@ const fakeFetch: typeof fetch = async (input, init) => {
 };
 
 const app = buildApp(db, {
+  requireLogin: false,
   today: () => '2026-11-15',
   fetch: fakeFetch,
   ynabApiUrl: 'https://ynab.test/v1',

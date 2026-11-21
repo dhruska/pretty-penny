@@ -1,3 +1,5 @@
+import { signInPath } from './lib/signIn';
+
 export interface Account {
   id: number;
   name: string;
@@ -330,6 +332,8 @@ async function request<T>(path: string, method = 'GET', body?: object): Promise<
     const error: { message?: string; code?: string } | null = await response
       .json()
       .catch(() => null);
+    // A session that ended, such as by signing out on another device, goes to sign-in and back.
+    if (error?.code === 'SIGNED_OUT') window.location.assign(signInPath());
     throw new ApiError(error?.message ?? 'Can’t reach the server.', response.status, error?.code);
   }
 
@@ -337,6 +341,9 @@ async function request<T>(path: string, method = 'GET', body?: object): Promise<
 }
 
 export const api = {
+  session: () => request<{ signedIn: boolean; passwordSet: boolean }>('/auth/session'),
+  login: (password: string) => request<void>('/auth/login', 'POST', { password }),
+  logout: () => request<void>('/auth/logout', 'POST'),
   listAccounts: () => request<Account[]>('/accounts'),
   createAccount: (input: {
     name: string;

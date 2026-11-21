@@ -14,7 +14,9 @@ export default defineConfig({
   testDir: './e2e',
   // Tests share one database and clear it before each test.
   workers: 1,
-  use: { baseURL: `http://localhost:${WEB_PORT}` },
+  // Signs in once with the test password; every test starts with that session.
+  globalSetup: './e2e/global-setup.ts',
+  use: { baseURL: `http://localhost:${WEB_PORT}`, storageState: 'e2e/.auth/signed-in.json' },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] }, testIgnore: '**/phone/**' },
     {

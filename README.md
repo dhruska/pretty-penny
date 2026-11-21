@@ -44,7 +44,13 @@ You'll need [nvm](https://github.com/nvm-sh/nvm) and Postgres 17. These steps us
    npm run db:migrate
    ```
 
-5. Start the app, then open <http://localhost:5173>.
+5. Set the password you'll sign in with. It must be at least 12 characters, and the command doesn't show it as you type. Run it again any time to change the password, which signs out every device.
+
+   ```sh
+   npm run set-password
+   ```
+
+6. Start the app, then open <http://localhost:5173> and sign in.
 
    ```sh
    npm run dev
@@ -66,6 +72,7 @@ Run `nvm use` in new terminal sessions so you're on the project's Node version.
 | `npm run build`         | Type-checks and builds the client and server   |
 | `npm run db:generate`   | Generates a migration from schema changes      |
 | `npm run db:migrate`    | Applies migrations to `DATABASE_URL`           |
+| `npm run set-password`  | Sets or changes the sign-in password           |
 
 ## Importing from YNAB
 

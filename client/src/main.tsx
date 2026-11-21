@@ -8,6 +8,7 @@ import { AccountPage } from './pages/AccountPage';
 import { AllTransactionsPage } from './pages/AllTransactionsPage';
 import { BudgetPage } from './pages/BudgetPage';
 import { ImportPage } from './pages/ImportPage';
+import { LoginPage } from './pages/LoginPage';
 
 // Reports carry the charting library, so they load only when opened.
 const ReportsPage = lazy(() =>
@@ -21,6 +22,7 @@ createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
+          <Route path="login" element={<LoginPage />} />
           <Route element={<AppLayout />}>
             <Route index element={<BudgetPage />} />
             <Route path="accounts/:id" element={<AccountPage />} />

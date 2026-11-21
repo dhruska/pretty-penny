@@ -19,5 +19,6 @@ dist/
 /backups/
 .DS_Store
 test-results/
+e2e/.auth/
 playwright-report/
 coverage/
