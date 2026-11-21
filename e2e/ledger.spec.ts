@@ -73,9 +73,14 @@ test('shows validation messages and refuses to delete an account in use', async 
     .click();
   await expect(sidebarAccount(page, 'Savings')).toContainText('-$5.00');
 
+  await page.getByRole('button', { name: 'Edit account' }).click();
   await page.getByRole('button', { name: 'Delete account' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
   await expect(page.getByText('Delete this account’s transactions')).toBeVisible();
+  await page
+    .getByRole('dialog', { name: 'Edit account' })
+    .getByRole('button', { name: 'Close', exact: true })
+    .click();
   await expect(sidebarAccount(page, 'Savings')).toBeVisible();
 });
 
@@ -87,11 +92,14 @@ test('renames and deletes an account', async ({ page }) => {
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(sidebarAccount(page, 'Old name')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Rename' }).click();
-  await page.getByRole('main').getByLabel('Account name').fill('New name');
-  await page.getByRole('main').getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('button', { name: 'Edit account' }).click();
+  const settings = page.getByRole('dialog', { name: 'Edit account' });
+  await settings.getByLabel('Account name').fill('New name');
+  await settings.getByRole('button', { name: 'Save' }).click();
+  await expect(settings).toBeHidden();
   await expect(sidebarAccount(page, 'New name')).toBeVisible();
 
+  await page.getByRole('button', { name: 'Edit account' }).click();
   await page.getByRole('button', { name: 'Delete account' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
   await expect(page.getByRole('region', { name: 'Ready to Assign' })).toBeVisible();

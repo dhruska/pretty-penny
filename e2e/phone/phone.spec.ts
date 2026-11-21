@@ -155,7 +155,7 @@ test('adds, edits, splits, flags and deletes transactions full screen', async ({
   await expect(page.getByRole('button', { name: 'Undo' })).toBeVisible();
 });
 
-test('reconciles and uses the More menu', async ({ page, request }) => {
+test('reconciles and edits the account', async ({ page, request }) => {
   const { checking } = await setUp(request);
   await page.goto(`/accounts/${checking.id}`);
 
@@ -164,13 +164,10 @@ test('reconciles and uses the More menu', async ({ page, request }) => {
   await expect(page.getByText(/Last reconciled/)).toBeVisible();
   await expect(page.getByRole('img', { name: 'Reconciled' }).first()).toBeVisible();
 
-  await page.getByRole('button', { name: 'More' }).click();
-  await page
-    .getByRole('dialog', { name: 'Account actions' })
-    .getByRole('button', { name: 'Rename' })
-    .click();
-  await page.getByRole('main').getByLabel('Account name').fill('Main Checking');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('button', { name: 'Edit account' }).click();
+  const settings = page.getByRole('dialog', { name: 'Edit account' });
+  await settings.getByLabel('Account name').fill('Main Checking');
+  await settings.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByRole('heading', { name: 'Main Checking' })).toBeVisible();
 });
 

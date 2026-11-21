@@ -124,6 +124,7 @@ test('closes an account with a balance and reopens it', async ({ page }) => {
   await page.goto('/');
   await createAccount(page, 'Old Savings', 'Savings', '50');
 
+  await page.getByRole('button', { name: 'Edit account' }).click();
   await page.getByRole('button', { name: 'Close account' }).click();
   await expect(page.getByRole('alertdialog')).toContainText('Balance Adjustment');
   await page.getByRole('alertdialog').getByRole('button', { name: 'Close account' }).click();
@@ -135,6 +136,7 @@ test('closes an account with a balance and reopens it', async ({ page }) => {
   await page.getByText('Closed (1)').click();
   await expect(sidebarAccount(page, 'Old Savings')).toContainText('$0.00');
 
+  await page.getByRole('button', { name: 'Edit account' }).click();
   await page.getByRole('button', { name: 'Reopen account' }).click();
   await expect(page.getByRole('button', { name: 'Add transaction' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Budget accounts' })).toContainText('Old Savings');

@@ -165,3 +165,26 @@ test('Add transaction opens a form that stays open for the next one until closed
   await form.getByRole('button', { name: 'Close' }).click();
   await expect(form).toHaveCount(0);
 });
+
+test('an account’s name and type are changed in Edit account', async ({ page, request }) => {
+  const savings = await post<{ id: number }>(request, '/api/accounts', {
+    name: 'Savings',
+    type: 'savings',
+    startingBalanceCents: 0,
+    date: thisMonthDate(1),
+  });
+  await page.goto(`/accounts/${savings.id}`);
+  await expect(page.getByText('Savings · Budget account')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Edit account' }).click();
+  const settings = page.getByRole('dialog', { name: 'Edit account' });
+  // Only types on the same side, budget or tracking, are offered.
+  const types = settings.getByLabel('Account type');
+  await expect(types.locator('option', { hasText: 'Asset' })).toHaveCount(0);
+  await types.selectOption({ label: 'Cash' });
+  await settings.getByLabel('Account name').fill('Rainy Day Cash');
+  await settings.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('Account saved')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Rainy Day Cash' })).toBeVisible();
+  await expect(page.getByText('Cash · Budget account')).toBeVisible();
+});

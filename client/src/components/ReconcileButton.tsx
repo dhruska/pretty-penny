@@ -62,7 +62,7 @@ export function ReconcileButton({ account }: { account: Account }) {
   return (
     <AlertDialog open={isOpen} onOpenChange={open}>
       <AlertDialogTrigger asChild>
-        <Button variant="ghost" size="sm">
+        <Button variant="outline" size="sm">
           Reconcile
         </Button>
       </AlertDialogTrigger>

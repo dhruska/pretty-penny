@@ -1,7 +1,6 @@
 import { api, type Account, type Frequency, type TransactionInput } from '@/api';
 import { ScheduledList } from '@/components/ScheduledList';
-import { AccountTypeSelect } from '@/components/AccountTypeSelect';
-import { ConfirmDelete } from '@/components/ConfirmDelete';
+import { EditAccountDialog } from '@/components/EditAccountDialog';
 import { Money } from '@/components/Money';
 import { ReconcileButton } from '@/components/ReconcileButton';
 import { TransactionForm } from '@/components/TransactionForm';
@@ -9,12 +8,10 @@ import { TransactionRegister } from '@/components/TransactionRegister';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useIsPhone } from '@/lib/useIsPhone';
-import { Plus } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { accountTypeLabel } from '@/lib/accountTypes';
 import { today } from '@/lib/dates';
-import { formatCents } from '@/lib/money';
 import { notify } from '@/lib/notify';
 import { refresh, registerQuery } from '@/lib/queries';
 import { useShortcuts } from '@/lib/shortcuts';
@@ -22,19 +19,18 @@ import { SkeletonRows } from '@/components/ui/skeleton';
 import {
   keepPreviousData,
   useInfiniteQuery,
-  useMutation,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { useDeferredValue, useEffect, useRef, useState, type FormEvent } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useDeferredValue, useEffect, useRef, useState } from 'react';
+import { useParams } from 'react-router';
 
 export function AccountPage() {
   const accountId = Number(useParams().id);
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts });
   const account = accounts.data?.find((candidate) => candidate.id === accountId);
 
-  if (accounts.isPending) return <p className="text-muted-foreground">Loading…</p>;
+  if (accounts.isPending) return <SkeletonRows rows={6} label="Loading the account" />;
   if (accounts.isError) return <p className="text-negative">{accounts.error.message}</p>;
   if (!account) return <p className="text-muted-foreground">Account not found.</p>;
 
@@ -44,9 +40,6 @@ export function AccountPage() {
 
 function AccountDetails({ account }: { account: Account }) {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
-  const [isRenaming, setIsRenaming] = useState(false);
-  const [name, setName] = useState(account.name);
   const [filter, setFilter] = useState('');
   const isPhone = useIsPhone();
   const [isAdding, setIsAdding] = useState(false);
@@ -82,35 +75,6 @@ function AccountDetails({ account }: { account: Account }) {
     '/': () => filterRef.current?.focus(),
   });
 
-  const changed = () => refresh(queryClient, 'accounts');
-
-  const update = useMutation({
-    mutationFn: (changes: { name?: string; type?: string }) =>
-      api.updateAccount(account.id, changes),
-    onSuccess: () => {
-      changed();
-      setIsRenaming(false);
-    },
-  });
-
-  const setClosed = useMutation({
-    mutationFn: (close: boolean) =>
-      close ? api.closeAccount(account.id, today()) : api.reopenAccount(account.id),
-    onSuccess: (_result, close) => {
-      changed();
-      notify(close ? `${account.name} closed` : `${account.name} reopened`);
-    },
-  });
-
-  const deleteAccount = useMutation({
-    mutationFn: () => api.deleteAccount(account.id),
-    onSuccess: () => {
-      navigate('/');
-      changed();
-      notify(`${account.name} deleted`);
-    },
-  });
-
   async function addTransaction(input: TransactionInput, frequency: Frequency | null) {
     // As in YNAB, a repeating or future-dated transaction becomes a scheduled transaction.
     if (frequency !== null || input.date > today()) {
@@ -126,159 +90,55 @@ function AccountDetails({ account }: { account: Account }) {
     refresh(queryClient, 'transactions');
   }
 
-  function handleRename(event: FormEvent) {
-    event.preventDefault();
-    if (name.trim() !== '') update.mutate({ name });
-  }
+  const kind = `${accountTypeLabel(account.type)} · ${account.onBudget ? 'Budget account' : 'Tracking account'}${account.closed ? ' · Closed' : ''}`;
 
-  const actionError = update.error ?? setClosed.error ?? deleteAccount.error;
-  const closeDescription =
-    account.balanceCents === 0
-      ? 'You can still view it, and reopen it later.'
-      : `Its balance of ${formatCents(account.balanceCents)} will be zeroed with a Balance Adjustment transaction. You can still view it, and reopen it later.`;
-
-  // Rename, close and delete: in the header on laptops, and in the More menu on phones.
-  const otherActions = (
-    <>
-      <Button variant="ghost" size="sm" onClick={() => setIsRenaming(true)}>
-        Rename
-      </Button>
-      {account.closed ? (
-        <Button variant="ghost" size="sm" onClick={() => setClosed.mutate(false)}>
-          Reopen account
-        </Button>
-      ) : (
-        <ConfirmDelete
-          triggerLabel="Close account"
-          title={`Close ${account.name}?`}
-          description={closeDescription}
-          confirmLabel="Close account"
-          destructive={false}
-          onConfirm={() => setClosed.mutate(true)}
-        />
-      )}
-      <ConfirmDelete
-        triggerLabel="Delete account"
-        title={`Delete ${account.name}?`}
-        description="Only accounts with no transactions other than a starting balance can be deleted."
-        onConfirm={() => deleteAccount.mutate()}
-      />
-    </>
-  );
   return (
-    <div className="space-y-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        {isRenaming ? (
-          <form onSubmit={handleRename} className="flex items-center gap-2">
-            <Input
-              aria-label="Account name"
-              value={name}
-              maxLength={100}
-              onChange={(event) => setName(event.target.value)}
-            />
-            <Button type="submit" size="sm" disabled={update.isPending}>
-              Save
+    <div className="space-y-5">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-sm text-muted-foreground">{kind}</p>
+          <h2 className="truncate text-2xl font-bold tracking-tight">{account.name}</h2>
+          <section
+            aria-label="Balances"
+            className="mt-2 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-sm text-muted-foreground"
+          >
+            <span>
+              Cleared{' '}
+              <Money cents={account.clearedBalanceCents} className="font-medium text-foreground" />
+            </span>
+            <span>
+              Uncleared{' '}
+              <Money
+                cents={account.balanceCents - account.clearedBalanceCents}
+                className="font-medium"
+              />
+            </span>
+            <span>
+              Working{' '}
+              <Money cents={account.balanceCents} className="text-base font-bold text-foreground" />
+            </span>
+          </section>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {account.lastReconciledAt
+              ? `Last reconciled ${new Date(account.lastReconciledAt).toLocaleDateString()}`
+              : 'Not reconciled yet'}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {!account.closed && <ReconcileButton account={account} />}
+          <EditAccountDialog key={account.id} account={account} />
+          {!isPhone && !account.closed && !isAdding && (
+            <Button size="sm" onClick={() => setIsAdding(true)}>
+              <Plus aria-hidden="true" className="size-4" />
+              Add transaction
             </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setName(account.name);
-                setIsRenaming(false);
-              }}
-            >
-              Cancel
-            </Button>
-          </form>
-        ) : (
-          <div>
-            <h2 className="text-2xl font-semibold">{account.name}</h2>
-            <p className="text-sm text-muted-foreground">
-              {accountTypeLabel(account.type)} · {account.onBudget ? 'Budget' : 'Tracking'}
-              {account.closed && ' · Closed'}
-            </p>
-            <section
-              aria-label="Balances"
-              className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm"
-            >
-              <span>
-                <span className="text-muted-foreground">Cleared </span>
-                <Money cents={account.clearedBalanceCents} />
-              </span>
-              <span className="text-muted-foreground">+</span>
-              <span>
-                <span className="text-muted-foreground">Uncleared </span>
-                <Money cents={account.balanceCents - account.clearedBalanceCents} />
-              </span>
-              <span className="text-muted-foreground">=</span>
-              <span>
-                <span className="text-muted-foreground">Working </span>
-                <Money cents={account.balanceCents} className="text-lg font-medium" />
-              </span>
-            </section>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {account.lastReconciledAt
-                ? `Last reconciled ${new Date(account.lastReconciledAt).toLocaleDateString()}`
-                : 'Not reconciled yet'}
-            </p>
-          </div>
-        )}
-        {!isRenaming && isPhone && (
-          // On phones, Reconcile stays in view and the rarer actions go in a menu.
-          <div className="flex items-center gap-1">
-            {!account.closed && <ReconcileButton account={account} />}
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm">
-                  More
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent
-                align="end"
-                aria-label="Account actions"
-                className="w-64 space-y-2 p-3"
-              >
-                <AccountTypeSelect
-                  label="Change account type"
-                  compact
-                  className="h-10 w-full"
-                  value={account.type}
-                  onBudget={account.onBudget}
-                  onChange={(type) => update.mutate({ type })}
-                />
-                <div className="flex flex-col items-start">{otherActions}</div>
-              </PopoverContent>
-            </Popover>
-          </div>
-        )}
-        {!isRenaming && !isPhone && (
-          <div className="flex flex-wrap items-center gap-1">
-            <AccountTypeSelect
-              label="Change account type"
-              compact
-              className="h-8 w-40"
-              value={account.type}
-              onBudget={account.onBudget}
-              onChange={(type) => update.mutate({ type })}
-            />
-            {!account.closed && <ReconcileButton account={account} />}
-            {otherActions}
-            {!account.closed && !isAdding && (
-              <Button size="sm" className="ml-1" onClick={() => setIsAdding(true)}>
-                <Plus aria-hidden="true" className="size-4" />
-                Add transaction
-              </Button>
-            )}
-          </div>
-        )}
+          )}
+        </div>
       </header>
-
-      {actionError && <p className="text-sm text-negative">{actionError.message}</p>}
 
       {account.closed ? (
         <p className="rounded-lg border bg-muted p-3 text-sm">
-          This account is closed. Reopen it to add transactions.
+          This account is closed. To add transactions, reopen it from Edit account.
         </p>
       ) : isPhone ? (
         // On phones the form opens full screen, so transactions show right away.
@@ -332,14 +192,20 @@ function AccountDetails({ account }: { account: Account }) {
       {transactions.isError && <p className="text-negative">{transactions.error.message}</p>}
       {transactions.isSuccess && (
         <div className="space-y-2">
-          <Input
-            ref={filterRef}
-            aria-label="Filter transactions"
-            placeholder="Filter transactions"
-            className="h-8 max-w-64"
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-          />
+          <div className="relative max-w-72">
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              ref={filterRef}
+              aria-label="Filter transactions"
+              placeholder="Filter transactions"
+              className="h-8 pl-8"
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+            />
+          </div>
           {query === '' ? (
             <TransactionRegister
               transactions={rows}
