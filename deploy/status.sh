@@ -32,6 +32,13 @@ fi
 
 [[ -f "$LOG" ]] && echo "      Log: $LOG ($(du -h "$LOG" | cut -f1))"
 
+# Backups: each folder's newest backup, failing if one is missing or more than 36 hours old.
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+if [[ -f "$REPO/server/dist/backup-cli.js" && -s "$NVM_DIR/nvm.sh" ]]; then
+  source "$NVM_DIR/nvm.sh"
+  (cd "$REPO" && nvm use >/dev/null && node server/dist/backup-cli.js status) || problems=$((problems + 1))
+fi
+
 if (( problems > 0 )); then
   echo "$problems problem(s). See docs/self-hosting.md, Troubleshooting."
   exit 1

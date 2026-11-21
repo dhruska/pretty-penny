@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "backup": "tsx src/backup-cli.ts backup",
+    "backup:check": "tsx src/backup-cli.ts check",
     "db:demo": "tsx src/db-demo.ts",
     "set-password": "tsx src/set-password.ts",
     "dev": "tsx watch src/index.ts",

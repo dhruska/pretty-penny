@@ -64,6 +64,8 @@ API_PORT=3001
 SECURE_COOKIES=true
 # Filled in at step 6.
 PUBLIC_URL=
+# Filled in under Backing up.
+BACKUP_DIRS=
 ```
 
 ## 4. Build and set up the database
@@ -129,11 +131,57 @@ It gets the latest code, installs, builds, updates the database, restarts the se
 
 ## Backing up
 
-Automatic backups aren't built yet. Until they are, back up by hand to a folder outside `~/pretty-penny`, such as an external drive. The file holds all your financial data, so keep it somewhere private.
+Every night at 3am, Pretty Penny saves a copy of its database to each backup folder you choose, checks that the copy reads back, and removes old ones. It keeps every backup from the last 30 days, plus the first backup of each month for a year. If the Mac is asleep or logged out at 3am, the backup runs at the next chance. Backups hold all your financial data, so they should only go somewhere encrypted.
+
+These steps use two folders: one on an external drive and one in iCloud Drive. If one is lost, the other survives. You can use just one, or others.
+
+1. **Check that both places are encrypted.**
+   - **iCloud Drive**: in **System Settings**, select your name, then **iCloud**, and turn on **Advanced Data Protection**. Without it, Apple can read what's in iCloud Drive.
+   - **External drive**: select it in Finder, then **File → Get Info**. **Format** should say **APFS (Encrypted)**. If it says APFS without "Encrypted", open Disk Utility, select the drive, and add a volume (the **+** button) formatted **APFS (Encrypted)**; this doesn't erase what's there. Use that volume for backups.
+
+2. **Make a folder in each place**, such as `Pretty Penny Backups` on the drive and in iCloud Drive.
+
+3. **Add the folders to `.env`**, separated by a colon. Spaces are fine, and `~` means your home folder. iCloud Drive's folder is `~/Library/Mobile Documents/com~apple~CloudDocs`.
+
+   ```sh
+   BACKUP_DIRS=/Volumes/YOUR_DRIVE/Pretty Penny Backups:~/Library/Mobile Documents/com~apple~CloudDocs/Pretty Penny Backups
+   ```
+
+4. **Back up once, and check the backup restores.** The check restores the newest backup into a throwaway database, compares it with your data, and deletes it.
+
+   ```sh
+   npm run backup
+   npm run backup:check
+   ```
+
+5. **Install the nightly job.**
+
+   ```sh
+   deploy/install-backups.sh
+   ```
+
+   It prints the path of the program that runs backups. macOS doesn't let background jobs write to external drives without permission, so in **System Settings → Privacy & Security → Full Disk Access**, select **+**, press **Command-Shift-G**, paste that path, and add it. After an update that changes the project's Node version, the path changes and you'll need to add it again; the status check will show a failed backup if so.
+
+6. **Try the job now** instead of waiting for 3am, then check:
+
+   ```sh
+   launchctl kickstart gui/$(id -u)/com.prettypenny.backup
+   deploy/status.sh
+   ```
+
+   `status.sh` shows each folder's newest backup, and fails if one is missing or more than 36 hours old. The job's log is `~/Library/Logs/PrettyPenny/com.prettypenny.backup.log`.
+
+Every so often, run `npm run backup:check` to confirm backups still restore.
+
+### Restoring a backup
 
 ```sh
-/opt/homebrew/opt/postgresql@17/bin/pg_dump -Fc pretty_penny > /Volumes/YOUR_DRIVE/pretty-penny-$(date +%F).dump
+deploy/restore.sh "/Volumes/YOUR_DRIVE/Pretty Penny Backups/pretty-penny-2026-11-21-030000.dump"
 ```
+
+It asks you to type `restore` to confirm. Then it backs up the current data, stops Pretty Penny, replaces everything with the backup, and starts Pretty Penny again. Every device is signed out; sign in with the password you had when the backup was made. If the file is in iCloud Drive and shows a cloud icon in Finder, open the folder in Finder first so it downloads.
+
+To restore onto a new Mac, follow steps 1 to 4 of this guide (skip `npm run set-password`, since the backup has your password), then run `deploy/restore.sh` with the backup, then continue from step 5.
 
 ## Troubleshooting
 
@@ -144,5 +192,6 @@ Start with `deploy/status.sh`, which checks each part.
 - **Pretty Penny doesn't answer**: read the end of its log, `~/Library/Logs/PrettyPenny/com.prettypenny.server.log`. A wrong `DATABASE_URL` shows up there.
 - **Tailscale isn't serving**: `tailscale serve status`, and `tailscale serve --bg 3001` again if needed.
 - **"Changes must come from Pretty Penny itself"**: `PUBLIC_URL` in `.env` doesn't match the address you opened. Fix it, then `deploy/install-service.sh`.
+- **A backup folder fails**: the status line says why. "Doesn't exist" usually means the drive isn't connected. "Not allowed" means the Full Disk Access step under Backing up is needed again.
 - **Forgot the password**: `npm run set-password` sets a new one and signs out every device.
 - **Stopping Pretty Penny**: `deploy/uninstall-service.sh` stops and removes the service. Your data stays in Postgres, and `deploy/install-service.sh` brings it back.

@@ -37,3 +37,9 @@ export const getSecureCookies = () => process.env.SECURE_COOKIES === 'true';
 
 /** The app's address on the tailnet, such as https://mac-mini.example.ts.net. */
 export const getPublicUrl = () => process.env.PUBLIC_URL || undefined;
+
+/** Folders that nightly backups go to, separated by colons; see docs/self-hosting.md. */
+export const getBackupDirsSetting = () => process.env.BACKUP_DIRS;
+
+/** Where Postgres's command line tools are; Homebrew's Postgres 17 by default. */
+export const getPgBin = () => process.env.PG_BIN || undefined;

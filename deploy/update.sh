@@ -22,5 +22,9 @@ npm run db:migrate
 
 echo "Restarting…"
 "$REPO/deploy/install-service.sh"
+# The backup job runs the project's Node version too, which may have changed.
+if [[ -f "$HOME/Library/LaunchAgents/com.prettypenny.backup.plist" ]]; then
+  "$REPO/deploy/install-backups.sh" >/dev/null
+fi
 sleep 3
 "$REPO/deploy/status.sh"
