@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sampleYnabPlan } from '../test/ynab-plan.js';
+import { sampleYnabPlan } from './sample-plan.js';
 import {
   flagNamesFrom,
   mapAccountType,

@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { sampleYnabPlan } from '../../server/src/test/ynab-plan';
+import { sampleYnabPlan } from '../../server/src/ynab/sample-plan';
 
 /**
  * A stand-in for YNAB's API during browser tests, serving the made-up sample plan. It accepts

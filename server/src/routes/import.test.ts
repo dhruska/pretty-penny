@@ -5,7 +5,7 @@ import { createDb } from '../db/client.js';
 import { accounts, payees, transactions } from '../db/schema.js';
 import { getTestDatabaseUrl } from '../env.js';
 import { resetDb } from '../test/reset-db.js';
-import { sampleYnabPlan } from '../test/ynab-plan.js';
+import { sampleYnabPlan } from '../ynab/sample-plan.js';
 import type { ImportReport } from '../ynab/compare.js';
 import type { YnabPlan } from '../ynab/types.js';
 

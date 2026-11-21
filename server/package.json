@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "db:demo": "tsx src/db-demo.ts",
     "set-password": "tsx src/set-password.ts",
     "dev": "tsx watch src/index.ts",
     "start:test": "tsx src/index.ts",

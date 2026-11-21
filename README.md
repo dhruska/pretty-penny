@@ -73,6 +73,15 @@ Run `nvm use` in new terminal sessions so you're on the project's Node version.
 | `npm run db:generate`   | Generates a migration from schema changes      |
 | `npm run db:migrate`    | Applies migrations to `DATABASE_URL`           |
 | `npm run set-password`  | Sets or changes the sign-in password           |
+| `npm run db:demo`       | Fills an empty database with a demo budget     |
+
+## Trying it with demo data
+
+To look around without entering your own data, fill a new, empty database with a made-up demo budget: a few accounts, categories, splits, transfers, flags and scheduled transactions over the last few months. It only runs on an empty database, so it never mixes with real data.
+
+```sh
+npm run db:demo
+```
 
 ## Importing from YNAB
 

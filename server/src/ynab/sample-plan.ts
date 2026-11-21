@@ -8,7 +8,7 @@ import type {
   YnabScheduledTransaction,
   YnabSubtransaction,
   YnabTransaction,
-} from '../ynab/types.js';
+} from './types.js';
 
 /**
  * A made-up YNAB plan in the shape YNAB's API returns, used by the import tests. Its figures
