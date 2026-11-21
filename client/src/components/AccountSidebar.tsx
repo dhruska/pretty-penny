@@ -4,6 +4,18 @@ import { registerQuery } from '@/lib/queries';
 import { useTheme, type ThemeChoice } from '@/lib/theme';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from 'cn';
+import {
+  ChartColumn,
+  Import,
+  List,
+  LogOut,
+  Monitor,
+  Moon,
+  Plus,
+  Sun,
+  Wallet,
+  type LucideIcon,
+} from 'lucide-react';
 import { NavLink } from 'react-router';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from '@/components/ui/dialog';
@@ -27,9 +39,9 @@ function AccountLink({ account }: { account: Account }) {
       onTouchStart={preload}
       className={({ isActive }) =>
         cn(
-          'flex items-baseline justify-between gap-3 rounded-md px-2 py-2.5 text-sm md:py-1.5 hover:bg-muted',
-          isActive && 'bg-muted font-medium',
-          account.closed && 'text-muted-foreground',
+          'flex items-baseline justify-between gap-3 rounded-lg px-2.5 py-2.5 text-sm md:py-1.5 hover:bg-muted',
+          isActive && 'bg-accent-soft font-semibold text-accent-ink hover:bg-accent-soft',
+          account.closed && !isActive && 'text-muted-foreground',
         )
       }
     >
@@ -37,7 +49,7 @@ function AccountLink({ account }: { account: Account }) {
       <span className="min-w-0 truncate" title={account.name}>
         {account.name}
       </span>
-      <Money cents={account.balanceCents} className="shrink-0" />
+      <Money cents={account.balanceCents} className="shrink-0 font-normal" />
     </NavLink>
   );
 }
@@ -46,8 +58,8 @@ function AccountSection({ title, accounts }: { title: string; accounts: Account[
   if (accounts.length === 0) return null;
 
   return (
-    <section aria-label={`${title} accounts`} className="mb-3">
-      <h2 className="flex items-baseline justify-between px-2 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+    <section aria-label={`${title} accounts`} className="mb-4">
+      <h2 className="flex items-baseline justify-between px-2.5 pb-1.5 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
         <span>{title}</span>
         <Money cents={sumBalances(accounts)} />
       </h2>
@@ -60,11 +72,43 @@ function AccountSection({ title, accounts }: { title: string; accounts: Account[
   );
 }
 
-const THEMES: { value: ThemeChoice; label: string }[] = [
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
-  { value: 'system', label: 'System' },
+const THEMES: { value: ThemeChoice; label: string; Icon: LucideIcon }[] = [
+  { value: 'light', label: 'Light', Icon: Sun },
+  { value: 'dark', label: 'Dark', Icon: Moon },
+  { value: 'system', label: 'System', Icon: Monitor },
 ];
+
+/** A page link with its icon, highlighted in copper when it's the current page. */
+function PageLink({
+  to,
+  Icon,
+  children,
+  end,
+  quiet = false,
+}: {
+  to: string;
+  Icon: LucideIcon;
+  children: string;
+  end?: boolean;
+  quiet?: boolean;
+}) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) =>
+        cn(
+          'flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-sm hover:bg-muted md:py-1.5',
+          quiet && 'text-muted-foreground',
+          isActive && 'bg-accent-soft font-semibold text-accent-ink hover:bg-accent-soft',
+        )
+      }
+    >
+      <Icon aria-hidden="true" className="size-4 shrink-0" strokeWidth={1.75} />
+      {children}
+    </NavLink>
+  );
+}
 
 /** Light, dark, or follow the device, remembered on this device. */
 function ThemeSwitch() {
@@ -78,10 +122,11 @@ function ThemeSwitch() {
           aria-pressed={choice === theme.value}
           onClick={() => choose(theme.value)}
           className={cn(
-            'flex-1 cursor-pointer rounded-md px-2 py-1.5 text-muted-foreground max-md:py-2.5',
+            'flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-muted-foreground max-md:py-2.5',
             choice === theme.value && 'bg-card font-medium text-foreground shadow-sm',
           )}
         >
+          <theme.Icon aria-hidden="true" className="size-3.5" strokeWidth={1.75} />
           {theme.label}
         </button>
       ))}
@@ -95,7 +140,8 @@ function AddAccountButton() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="secondary" size="sm" className="mt-4 w-full">
+        <Button variant="outline" size="sm" className="mt-1 w-full justify-start gap-2.5 px-2.5">
+          <Plus aria-hidden="true" className="size-4" strokeWidth={1.75} />
           Add account
         </Button>
       </DialogTrigger>
@@ -116,40 +162,17 @@ export function SidebarContents() {
 
   return (
     <>
-      <NavLink
-        to="/"
-        end
-        className={({ isActive }) =>
-          cn(
-            'mb-1 block rounded-md px-2 py-2.5 text-sm md:py-1.5 hover:bg-muted',
-            isActive && 'bg-muted font-medium',
-          )
-        }
-      >
-        Budget
-      </NavLink>
-      <NavLink
-        to="/transactions"
-        className={({ isActive }) =>
-          cn(
-            'mb-1 block rounded-md px-2 py-2.5 text-sm md:py-1.5 hover:bg-muted',
-            isActive && 'bg-muted font-medium',
-          )
-        }
-      >
-        All transactions
-      </NavLink>
-      <NavLink
-        to="/reports"
-        className={({ isActive }) =>
-          cn(
-            'mb-4 block rounded-md px-2 py-2.5 text-sm md:py-1.5 hover:bg-muted',
-            isActive && 'bg-muted font-medium',
-          )
-        }
-      >
-        Reports
-      </NavLink>
+      <nav aria-label="Pages" className="mb-5 space-y-0.5">
+        <PageLink to="/" end Icon={Wallet}>
+          Budget
+        </PageLink>
+        <PageLink to="/transactions" Icon={List}>
+          All transactions
+        </PageLink>
+        <PageLink to="/reports" Icon={ChartColumn}>
+          Reports
+        </PageLink>
+      </nav>
 
       {accounts.isError && <p className="text-sm text-negative">{accounts.error.message}</p>}
       {accounts.isPending && (
@@ -167,7 +190,7 @@ export function SidebarContents() {
       <AccountSection title="Tracking" accounts={open.filter((account) => !account.onBudget)} />
 
       {all.length > 0 && (
-        <div className="flex items-baseline justify-between border-t px-2 pt-2 text-sm font-medium">
+        <div className="mb-3 flex items-baseline justify-between border-t px-2.5 pt-3 text-sm font-semibold">
           <span>Net worth</span>
           <Money cents={sumBalances(all)} />
         </div>
@@ -175,7 +198,7 @@ export function SidebarContents() {
 
       {closed.length > 0 && (
         <details className="mt-3">
-          <summary className="cursor-pointer px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          <summary className="cursor-pointer px-2.5 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
             Closed ({closed.length})
           </summary>
           <nav aria-label="Closed accounts" className="mt-1 space-y-0.5">
@@ -188,36 +211,34 @@ export function SidebarContents() {
 
       <AddAccountButton />
 
-      <NavLink
-        to="/import"
-        className={({ isActive }) =>
-          cn(
-            'mt-3 block rounded-md px-2 py-2.5 text-sm md:py-1.5 text-muted-foreground hover:bg-muted',
-            isActive && 'bg-muted font-medium text-foreground',
-          )
-        }
-      >
-        Import from YNAB
-      </NavLink>
+      <div className="mt-6 space-y-0.5 border-t pt-3">
+        <PageLink to="/import" Icon={Import} quiet>
+          Import from YNAB
+        </PageLink>
+        <button
+          type="button"
+          onClick={async () => {
+            await api.logout();
+            window.location.assign('/login');
+          }}
+          className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-left text-sm text-muted-foreground hover:bg-muted md:py-1.5"
+        >
+          <LogOut aria-hidden="true" className="size-4" strokeWidth={1.75} />
+          Sign out
+        </button>
+      </div>
       <ThemeSwitch />
-      <button
-        type="button"
-        onClick={async () => {
-          await api.logout();
-          window.location.assign('/login');
-        }}
-        className="mt-1 block w-full cursor-pointer rounded-md px-2 py-2.5 text-left text-sm text-muted-foreground hover:bg-muted md:py-1.5"
-      >
-        Sign out
-      </button>
     </>
   );
 }
 
 export function AccountSidebar() {
   return (
-    <aside aria-label="Accounts" className="min-h-svh w-72 shrink-0 border-r bg-sidebar p-4">
-      <h1 className="mb-5 flex items-center gap-2.5 px-2 text-base font-bold tracking-tight">
+    <aside
+      aria-label="Accounts"
+      className="min-h-svh w-68 shrink-0 border-r bg-sidebar px-3.5 py-5"
+    >
+      <h1 className="mb-6 flex items-center gap-2.5 px-2.5 text-base font-bold tracking-tight">
         <PennyMark />
         Pretty Penny
       </h1>
