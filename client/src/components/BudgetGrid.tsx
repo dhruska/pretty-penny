@@ -1,8 +1,11 @@
 import type { Budget, BudgetCategory } from '@/api';
+import { Dialog, DialogContent, DialogHeader } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { centsToInput, parseDollars } from '@/lib/money';
+import { centsToInput, formatCents, parseDollars } from '@/lib/money';
+import { useIsPhone } from '@/lib/useIsPhone';
+import { cn } from 'cn';
 import { useState } from 'react';
-import { AvailableButton } from './CategoryMoney';
+import { AvailableButton, CategoryMoneyPanel } from './CategoryMoney';
 import { Money } from './Money';
 
 interface BudgetGridProps {
@@ -61,7 +64,103 @@ function AssignedInput({
   );
 }
 
+/** Available as a colored pill, as in YNAB: green with money, red when overspent. */
+function availableClass(cents: number) {
+  return cn(
+    'inline-block rounded-full px-2 py-0.5 whitespace-nowrap tabular-nums',
+    cents > 0 && 'bg-positive/10 text-positive',
+    cents === 0 && 'text-muted-foreground',
+    cents < 0 && 'bg-negative/10 text-negative',
+  );
+}
+
+/** On phones, as in YNAB's app: each category shows its Available, and tapping it opens the rest. */
+function PhoneBudgetList({
+  budget,
+  groups,
+  onAssign,
+}: {
+  budget: Budget;
+  groups: Budget['groups'];
+  onAssign: BudgetGridProps['onAssign'];
+}) {
+  const [openId, setOpenId] = useState<number | null>(null);
+  const open = groups.flatMap((group) => group.categories).find((c) => c.id === openId);
+
+  return (
+    <div className="overflow-hidden rounded-lg border bg-card text-sm">
+      <div className="flex justify-between border-b px-3 py-2 text-muted-foreground">
+        <span>Category</span>
+        <span>Available</span>
+      </div>
+      {groups.map((group) => (
+        <section key={group.id} aria-label={group.name}>
+          <h3 className="flex items-center justify-between gap-3 border-b bg-muted px-3 py-2 font-medium">
+            <span className="min-w-0 truncate">
+              {group.name}
+              {group.hidden && <span className="ml-2 font-normal">(hidden)</span>}
+            </span>
+            <Money cents={sum(group.categories, 'availableCents')} className="px-2" />
+          </h3>
+          {group.categories.map((category) => (
+            <button
+              key={category.id}
+              type="button"
+              aria-label={`${category.name}, ${formatCents(category.availableCents)} available`}
+              onClick={() => setOpenId(category.id)}
+              className="flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 border-b px-3 py-2 text-left last:border-0 hover:bg-muted/50"
+            >
+              <span className="min-w-0 truncate">
+                {category.name}
+                {category.hidden && <span className="ml-2 text-muted-foreground">(hidden)</span>}
+              </span>
+              <span className={availableClass(category.availableCents)}>
+                {formatCents(category.availableCents)}
+              </span>
+            </button>
+          ))}
+        </section>
+      ))}
+
+      <Dialog open={open !== undefined} onOpenChange={(isOpen) => !isOpen && setOpenId(null)}>
+        {open && (
+          <DialogContent placement="bottom">
+            <DialogHeader title={open.name} />
+            <dl className="mb-4 grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-2 text-sm">
+              <dt className="text-muted-foreground">Assigned</dt>
+              <dd>
+                <AssignedInput
+                  key={`${budget.month}-${open.assignedCents}`}
+                  category={open}
+                  onAssign={onAssign}
+                />
+              </dd>
+              <dt className="text-muted-foreground">Activity</dt>
+              <dd className="text-right">
+                <Money cents={open.activityCents} className="text-foreground" />
+              </dd>
+              <dt className="text-muted-foreground">Available</dt>
+              <dd className="text-right">
+                <span className={availableClass(open.availableCents)}>
+                  {formatCents(open.availableCents)}
+                </span>
+              </dd>
+            </dl>
+            <CategoryMoneyPanel
+              category={open}
+              budget={budget}
+              showHeading={false}
+              onDone={() => setOpenId(null)}
+            />
+          </DialogContent>
+        )}
+      </Dialog>
+    </div>
+  );
+}
+
 export function BudgetGrid({ budget, showHidden, onAssign }: BudgetGridProps) {
+  const isPhone = useIsPhone();
   const groups = budget.groups
     .filter((group) => showHidden || !group.hidden)
     .map((group) => ({
@@ -76,6 +175,8 @@ export function BudgetGrid({ budget, showHidden, onAssign }: BudgetGridProps) {
       </p>
     );
   }
+
+  if (isPhone) return <PhoneBudgetList budget={budget} groups={groups} onAssign={onAssign} />;
 
   return (
     <div className="relative overflow-x-auto rounded-lg border bg-card">

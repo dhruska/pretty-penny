@@ -2,6 +2,9 @@ import { api, type Account } from '@/api';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from 'cn';
 import { NavLink } from 'react-router';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from '@/components/ui/dialog';
+import { useState } from 'react';
 import { AddAccountForm } from './AddAccountForm';
 import { Money } from './Money';
 
@@ -14,14 +17,17 @@ function AccountLink({ account }: { account: Account }) {
       to={`/accounts/${account.id}`}
       className={({ isActive }) =>
         cn(
-          'flex items-baseline justify-between gap-3 rounded-md px-2 py-1.5 text-sm hover:bg-muted',
+          'flex items-baseline justify-between gap-3 rounded-md px-2 py-2.5 text-sm md:py-1.5 hover:bg-muted',
           isActive && 'bg-muted font-medium',
           account.closed && 'text-muted-foreground',
         )
       }
     >
-      <span className="truncate">{account.name}</span>
-      <Money cents={account.balanceCents} />
+      {/* Long names shorten with "…", keeping the balance on one line beside them. */}
+      <span className="min-w-0 truncate" title={account.name}>
+        {account.name}
+      </span>
+      <Money cents={account.balanceCents} className="shrink-0" />
     </NavLink>
   );
 }
@@ -44,25 +50,39 @@ function AccountSection({ title, accounts }: { title: string; accounts: Account[
   );
 }
 
-export function AccountSidebar() {
+/** As in YNAB, adding an account is rare, so it opens in a dialog rather than filling the sidebar. */
+function AddAccountButton() {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="secondary" size="sm" className="mt-4 w-full">
+          Add account
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader title="Add an account" />
+        <AddAccountForm onDone={() => setOpen(false)} />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** The page links, accounts and balances, shown in the laptop sidebar and the phone menu. */
+export function SidebarContents() {
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts });
   const all = accounts.data ?? [];
   const open = all.filter((account) => !account.closed);
   const closed = all.filter((account) => account.closed);
 
   return (
-    <aside
-      aria-label="Accounts"
-      className="shrink-0 border-b bg-card p-4 md:min-h-svh md:w-72 md:border-r md:border-b-0"
-    >
-      <h1 className="mb-4 text-lg font-semibold">Pretty Penny</h1>
-
+    <>
       <NavLink
         to="/"
         end
         className={({ isActive }) =>
           cn(
-            'mb-1 block rounded-md px-2 py-1.5 text-sm hover:bg-muted',
+            'mb-1 block rounded-md px-2 py-2.5 text-sm md:py-1.5 hover:bg-muted',
             isActive && 'bg-muted font-medium',
           )
         }
@@ -73,7 +93,7 @@ export function AccountSidebar() {
         to="/transactions"
         className={({ isActive }) =>
           cn(
-            'mb-1 block rounded-md px-2 py-1.5 text-sm hover:bg-muted',
+            'mb-1 block rounded-md px-2 py-2.5 text-sm md:py-1.5 hover:bg-muted',
             isActive && 'bg-muted font-medium',
           )
         }
@@ -84,7 +104,7 @@ export function AccountSidebar() {
         to="/reports"
         className={({ isActive }) =>
           cn(
-            'mb-4 block rounded-md px-2 py-1.5 text-sm hover:bg-muted',
+            'mb-4 block rounded-md px-2 py-2.5 text-sm md:py-1.5 hover:bg-muted',
             isActive && 'bg-muted font-medium',
           )
         }
@@ -117,19 +137,28 @@ export function AccountSidebar() {
         </details>
       )}
 
-      <AddAccountForm />
+      <AddAccountButton />
 
       <NavLink
         to="/import"
         className={({ isActive }) =>
           cn(
-            'mt-3 block rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted',
+            'mt-3 block rounded-md px-2 py-2.5 text-sm md:py-1.5 text-muted-foreground hover:bg-muted',
             isActive && 'bg-muted font-medium text-foreground',
           )
         }
       >
         Import from YNAB
       </NavLink>
+    </>
+  );
+}
+
+export function AccountSidebar() {
+  return (
+    <aside aria-label="Accounts" className="min-h-svh w-72 shrink-0 border-r bg-card p-4">
+      <h1 className="mb-4 text-lg font-semibold">Pretty Penny</h1>
+      <SidebarContents />
     </aside>
   );
 }

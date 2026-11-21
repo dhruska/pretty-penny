@@ -15,7 +15,20 @@ export default defineConfig({
   // Tests share one database and clear it before each test.
   workers: 1,
   use: { baseURL: `http://localhost:${WEB_PORT}` },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] }, testIgnore: '**/phone/**' },
+    {
+      // A typical phone screen, with touch, for the phone layouts.
+      name: 'phone',
+      testMatch: '**/phone/**/*.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 390, height: 844 },
+        isMobile: true,
+        hasTouch: true,
+      },
+    },
+  ],
   webServer: [
     {
       // Stands in for YNAB's API, so the import test never contacts YNAB.

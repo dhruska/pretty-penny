@@ -9,7 +9,7 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { AccountTypeSelect } from './AccountTypeSelect';
 
-export function AddAccountForm() {
+export function AddAccountForm({ onDone }: { onDone?: () => void }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [name, setName] = useState('');
@@ -23,6 +23,7 @@ export function AddAccountForm() {
       await queryClient.invalidateQueries();
       setName('');
       setStartingBalance('');
+      onDone?.();
       navigate(`/accounts/${account.id}`);
     },
     onError: (mutationError) => setError(mutationError.message),
@@ -46,8 +47,7 @@ export function AddAccountForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mt-6 space-y-3 border-t pt-4">
-      <h2 className="text-sm font-medium">Add an account</h2>
+    <form aria-label="Add an account" onSubmit={handleSubmit} className="space-y-3">
       <div className="space-y-1">
         <Label htmlFor="account-name">Account name</Label>
         <Input

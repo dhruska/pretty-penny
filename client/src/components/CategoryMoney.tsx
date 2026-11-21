@@ -106,14 +106,17 @@ function MoveForm({
   );
 }
 
-function CategoryMoneyPanel({
+export function CategoryMoneyPanel({
   category,
   budget,
   onDone,
+  showHeading = true,
 }: {
   category: BudgetCategory;
   budget: Budget;
   onDone: () => void;
+  /** The phone panel shows the name and figures itself. */
+  showHeading?: boolean;
 }) {
   const { move, setAssignments } = useBudgetActions(budget.month, onDone);
   const error = move.error ?? setAssignments.error;
@@ -140,12 +143,14 @@ function CategoryMoneyPanel({
 
   return (
     <div className="space-y-4 text-sm">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="font-medium">{category.name}</span>
-        <span>
-          <Money cents={category.availableCents} /> available
-        </span>
-      </div>
+      {showHeading && (
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="font-medium">{category.name}</span>
+          <span>
+            <Money cents={category.availableCents} /> available
+          </span>
+        </div>
+      )}
 
       {error && <p className="text-negative">{error.message}</p>}
 

@@ -7,7 +7,9 @@ import {
   type Frequency,
 } from '@/api';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader } from '@/components/ui/dialog';
 import { frequencyLabel } from '@/lib/frequencies';
+import { useIsPhone } from '@/lib/useIsPhone';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ConfirmDelete } from './ConfirmDelete';
@@ -60,7 +62,90 @@ export function ScheduledList({ account }: { account: Account }) {
     setEditingId(null);
   }
 
+  const isPhone = useIsPhone();
+
   if (!schedules.data || schedules.data.length === 0) return null;
+
+  if (isPhone) {
+    const editing = schedules.data.find((schedule) => schedule.id === editingId);
+    const run = (task: () => Promise<unknown>) => {
+      action.mutate(task);
+      setEditingId(null);
+    };
+    return (
+      <section aria-label="Scheduled transactions" className="space-y-2">
+        <h3 className="text-sm font-medium text-muted-foreground">Scheduled</h3>
+        {action.isError && <p className="text-sm text-negative">{action.error.message}</p>}
+        <ul className="divide-y rounded-lg border border-dashed bg-muted/40">
+          {schedules.data.map((schedule) => (
+            <li key={schedule.id}>
+              <button
+                type="button"
+                aria-label={`Edit scheduled ${scheduleLabel(schedule) || 'transaction'}, next on ${schedule.nextDate}`}
+                onClick={() => setEditingId(schedule.id)}
+                className="flex min-h-14 w-full cursor-pointer flex-col justify-center gap-0.5 px-3 py-1.5 text-left text-muted-foreground"
+              >
+                <span className="flex items-baseline justify-between gap-2">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    {schedule.flag && <FlagBadge color={schedule.flag} />}
+                    <span className="truncate">{scheduleLabel(schedule)}</span>
+                  </span>
+                  <Money cents={schedule.amountCents} className="text-muted-foreground" />
+                </span>
+                <span className="flex gap-2 text-xs">
+                  <span className="tabular-nums">{schedule.nextDate}</span>
+                  <span>{frequencyLabel(schedule.frequency)}</span>
+                  <span className="min-w-0 truncate">{categoryLabel(schedule)}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+
+        <Dialog open={editing !== undefined} onOpenChange={(open) => !open && setEditingId(null)}>
+          {editing && (
+            <DialogContent placement="full">
+              <DialogHeader title="Scheduled transaction" />
+              <div className="mb-4 flex flex-wrap gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={action.isPending}
+                  onClick={() => run(() => api.enterScheduledNow(editing.id))}
+                >
+                  Enter now
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={action.isPending}
+                  onClick={() => run(() => api.skipScheduled(editing.id))}
+                >
+                  Skip
+                </Button>
+                <ConfirmDelete
+                  triggerLabel="Delete"
+                  title="Delete this scheduled transaction?"
+                  description="Future occurrences won't be entered. Transactions it already entered stay."
+                  onConfirm={() => run(() => api.deleteScheduled(editing.id))}
+                />
+              </div>
+              <TransactionForm
+                label="Edit scheduled transaction"
+                submitLabel="Save"
+                account={account}
+                transaction={toDraft(editing)}
+                allowRepeat
+                initialFrequency={editing.frequency}
+                onSubmit={(input, frequency) => saveEdit(editing.id, input, frequency)}
+                onCancel={() => setEditingId(null)}
+              />
+            </DialogContent>
+          )}
+        </Dialog>
+      </section>
+    );
+  }
 
   return (
     <section aria-label="Scheduled transactions" className="space-y-2">

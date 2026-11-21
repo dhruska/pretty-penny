@@ -12,6 +12,7 @@ function row(page: Page, text: string) {
 }
 
 async function createAccount(page: Page, name: string, type: string, startingBalance = '') {
+  await page.getByRole('button', { name: 'Add account' }).click();
   await page.getByLabel('Account name').fill(name);
   await page.getByLabel('Account type', { exact: true }).selectOption({ label: type });
   await page.getByLabel('Starting balance').fill(startingBalance);

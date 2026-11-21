@@ -63,9 +63,10 @@ export function SplitLinesEditor({ lines, totalCents, onChange }: SplitLinesEdit
         return (
           <div
             key={line.key}
-            className="grid grid-cols-2 gap-2 md:grid-cols-[1.3fr_1fr_6rem_6rem_auto]"
+            // On phones each line is a card: category and Remove, then memo, then amounts.
+            className="grid grid-cols-[1fr_1fr_auto] gap-2 rounded-md border bg-card p-2 md:grid-cols-[1.3fr_1fr_6rem_6rem_auto] md:border-0 md:bg-transparent md:p-0"
           >
-            <div className="col-span-2 md:col-span-1">
+            <div className="col-span-2 max-md:row-start-1 md:col-span-1">
               <CategorySelect
                 id={`split-${line.key}-category`}
                 aria-label={`${label} category`}
@@ -77,7 +78,7 @@ export function SplitLinesEditor({ lines, totalCents, onChange }: SplitLinesEdit
               aria-label={`${label} memo`}
               placeholder="Memo"
               maxLength={500}
-              className="col-span-2 md:col-span-1"
+              className="col-span-3 md:col-span-1"
               value={line.memo}
               onChange={(event) => update(index, { memo: event.target.value })}
             />
@@ -92,6 +93,7 @@ export function SplitLinesEditor({ lines, totalCents, onChange }: SplitLinesEdit
               aria-label={`${label} inflow`}
               placeholder="Inflow"
               inputMode="decimal"
+              className="max-md:col-span-2"
               value={line.inflow}
               onChange={(event) => update(index, { inflow: event.target.value })}
             />
@@ -100,6 +102,7 @@ export function SplitLinesEditor({ lines, totalCents, onChange }: SplitLinesEdit
               variant="ghost"
               size="sm"
               aria-label={`Remove ${label.toLowerCase()}`}
+              className="max-md:col-start-3 max-md:row-start-1"
               disabled={lines.length <= 2}
               onClick={() => onChange(lines.filter((_, i) => i !== index))}
             >

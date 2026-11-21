@@ -7,7 +7,10 @@ import { ReconcileButton } from '@/components/ReconcileButton';
 import { TransactionForm } from '@/components/TransactionForm';
 import { TransactionRegister } from '@/components/TransactionRegister';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useIsPhone } from '@/lib/useIsPhone';
 import { accountTypeLabel } from '@/lib/accountTypes';
 import { today } from '@/lib/dates';
 import { formatCents } from '@/lib/money';
@@ -35,6 +38,8 @@ function AccountDetails({ account }: { account: Account }) {
   const [isRenaming, setIsRenaming] = useState(false);
   const [name, setName] = useState(account.name);
   const [filter, setFilter] = useState('');
+  const isPhone = useIsPhone();
+  const [isAdding, setIsAdding] = useState(false);
 
   const transactions = useQuery({
     queryKey: ['transactions', account.id],
@@ -87,6 +92,34 @@ function AccountDetails({ account }: { account: Account }) {
       ? 'You can still view it, and reopen it later.'
       : `Its balance of ${formatCents(account.balanceCents)} will be zeroed with a Balance Adjustment transaction. You can still view it, and reopen it later.`;
 
+  // Rename, close and delete: in the header on laptops, and in the More menu on phones.
+  const otherActions = (
+    <>
+      <Button variant="ghost" size="sm" onClick={() => setIsRenaming(true)}>
+        Rename
+      </Button>
+      {account.closed ? (
+        <Button variant="ghost" size="sm" onClick={() => setClosed.mutate(false)}>
+          Reopen account
+        </Button>
+      ) : (
+        <ConfirmDelete
+          triggerLabel="Close account"
+          title={`Close ${account.name}?`}
+          description={closeDescription}
+          confirmLabel="Close account"
+          destructive={false}
+          onConfirm={() => setClosed.mutate(true)}
+        />
+      )}
+      <ConfirmDelete
+        triggerLabel="Delete account"
+        title={`Delete ${account.name}?`}
+        description="Only accounts with no transactions other than a starting balance can be deleted."
+        onConfirm={() => deleteAccount.mutate()}
+      />
+    </>
+  );
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -146,7 +179,35 @@ function AccountDetails({ account }: { account: Account }) {
             </p>
           </div>
         )}
-        {!isRenaming && (
+        {!isRenaming && isPhone && (
+          // On phones, Reconcile stays in view and the rarer actions go in a menu.
+          <div className="flex items-center gap-1">
+            {!account.closed && <ReconcileButton account={account} />}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="sm">
+                  More
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="end"
+                aria-label="Account actions"
+                className="w-64 space-y-2 p-3"
+              >
+                <AccountTypeSelect
+                  label="Change account type"
+                  compact
+                  className="h-10 w-full"
+                  value={account.type}
+                  onBudget={account.onBudget}
+                  onChange={(type) => update.mutate({ type })}
+                />
+                <div className="flex flex-col items-start">{otherActions}</div>
+              </PopoverContent>
+            </Popover>
+          </div>
+        )}
+        {!isRenaming && !isPhone && (
           <div className="flex flex-wrap items-center gap-1">
             <AccountTypeSelect
               label="Change account type"
@@ -157,29 +218,7 @@ function AccountDetails({ account }: { account: Account }) {
               onChange={(type) => update.mutate({ type })}
             />
             {!account.closed && <ReconcileButton account={account} />}
-            <Button variant="ghost" size="sm" onClick={() => setIsRenaming(true)}>
-              Rename
-            </Button>
-            {account.closed ? (
-              <Button variant="ghost" size="sm" onClick={() => setClosed.mutate(false)}>
-                Reopen account
-              </Button>
-            ) : (
-              <ConfirmDelete
-                triggerLabel="Close account"
-                title={`Close ${account.name}?`}
-                description={closeDescription}
-                confirmLabel="Close account"
-                destructive={false}
-                onConfirm={() => setClosed.mutate(true)}
-              />
-            )}
-            <ConfirmDelete
-              triggerLabel="Delete account"
-              title={`Delete ${account.name}?`}
-              description="Only accounts with no transactions other than a starting balance can be deleted."
-              onConfirm={() => deleteAccount.mutate()}
-            />
+            {otherActions}
           </div>
         )}
       </header>
@@ -190,6 +229,27 @@ function AccountDetails({ account }: { account: Account }) {
         <p className="rounded-lg border bg-muted p-3 text-sm">
           This account is closed. Reopen it to add transactions.
         </p>
+      ) : isPhone ? (
+        // On phones the form opens full screen, so transactions show right away.
+        <Dialog open={isAdding} onOpenChange={setIsAdding}>
+          <DialogTrigger asChild>
+            <Button className="w-full">Add transaction</Button>
+          </DialogTrigger>
+          <DialogContent placement="full">
+            <DialogHeader title="Add transaction" />
+            <TransactionForm
+              label="Add transaction"
+              submitLabel="Add transaction"
+              account={account}
+              allowRepeat
+              onSubmit={async (input, frequency) => {
+                await addTransaction(input, frequency);
+                setIsAdding(false);
+              }}
+              onCancel={() => setIsAdding(false)}
+            />
+          </DialogContent>
+        </Dialog>
       ) : (
         <section className="rounded-lg border bg-card p-3">
           <TransactionForm

@@ -135,7 +135,7 @@ export function FlagPicker({ value, onChange, disabled }: FlagPickerProps) {
           title={value ? label : 'Add a flag'}
           disabled={disabled}
           className={cn(
-            'inline-flex size-6 cursor-pointer items-center justify-center rounded hover:bg-muted disabled:cursor-default',
+            'inline-flex size-6 cursor-pointer items-center justify-center rounded hover:bg-muted disabled:cursor-default max-md:size-10',
             !value && 'text-muted-foreground/50 hover:text-muted-foreground',
           )}
         >
