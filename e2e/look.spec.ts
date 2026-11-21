@@ -188,3 +188,23 @@ test('an account’s name and type are changed in Edit account', async ({ page, 
   await expect(page.getByRole('heading', { name: 'Rainy Day Cash' })).toBeVisible();
   await expect(page.getByText('Cash · Budget account')).toBeVisible();
 });
+
+test('a new budget welcomes you with first steps', async ({ page }) => {
+  await page.goto('/');
+  const welcome = page.getByRole('region', { name: 'Welcome' });
+  await expect(welcome).toContainText('Welcome to Pretty Penny');
+  await expect(page.getByText('No categories yet')).toBeVisible();
+
+  await welcome.getByRole('button', { name: 'Manage categories' }).click();
+  await expect(page.getByRole('button', { name: 'Done' })).toBeVisible();
+
+  await welcome.getByRole('button', { name: 'Add account' }).click();
+  await page.getByLabel('Account name').fill('Checking');
+  await page.getByLabel('Starting balance', { exact: true }).fill('100');
+  await page.getByRole('dialog').getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('heading', { name: 'Checking' })).toBeVisible();
+
+  // With an account, the budget is no longer new.
+  await page.getByRole('link', { name: 'Budget' }).click();
+  await expect(page.getByRole('region', { name: 'Welcome' })).toHaveCount(0);
+});

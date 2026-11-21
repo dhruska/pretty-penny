@@ -135,12 +135,16 @@ function ThemeSwitch() {
 }
 
 /** As in YNAB, adding an account is rare, so it opens in a dialog rather than filling the sidebar. */
-function AddAccountButton() {
+export function AddAccountButton({ className }: { className?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="mt-1 w-full justify-start gap-2.5 px-2.5">
+        <Button
+          variant="outline"
+          size="sm"
+          className={className ?? 'mt-1 w-full justify-start gap-2.5 px-2.5'}
+        >
           <Plus aria-hidden="true" className="size-4" strokeWidth={1.75} />
           Add account
         </Button>

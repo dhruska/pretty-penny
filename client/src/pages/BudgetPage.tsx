@@ -1,7 +1,9 @@
 import { api, type Budget } from '@/api';
 import { AutoAssignMenu } from '@/components/AutoAssignMenu';
 import { BudgetGrid } from '@/components/BudgetGrid';
+import { AddAccountButton } from '@/components/AccountSidebar';
 import { CategoryManager } from '@/components/CategoryManager';
+import { PennyMark } from '@/components/PennyMark';
 import { Money } from '@/components/Money';
 import { Button } from '@/components/ui/button';
 import { SkeletonRows } from '@/components/ui/skeleton';
@@ -39,6 +41,62 @@ function UncategorizedNotice({ uncategorized }: { uncategorized: Budget['uncateg
         ))}
       </ul>
     </div>
+  );
+}
+
+/** A brand-new budget's first steps, or bringing everything over from YNAB. */
+function Welcome({ onManage }: { onManage: () => void }) {
+  const steps = [
+    {
+      title: 'Add your accounts',
+      body: 'Checking, savings and cards, with their balances today.',
+      action: <AddAccountButton className="w-full sm:w-auto" />,
+    },
+    {
+      title: 'Create categories',
+      body: 'What you spend on and save for, such as Rent, Groceries or a vacation.',
+      action: (
+        <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={onManage}>
+          Manage categories
+        </Button>
+      ),
+    },
+    {
+      title: 'Give every dollar a job',
+      body: 'Assign your Ready to Assign money to categories until it reaches zero.',
+    },
+  ];
+  return (
+    <section aria-label="Welcome" className="rounded-xl border bg-card p-5 sm:p-6">
+      <div className="flex items-center gap-3">
+        <PennyMark className="size-9" />
+        <div>
+          <h3 className="text-lg font-bold tracking-tight">Welcome to Pretty Penny</h3>
+          <p className="text-sm text-muted-foreground">
+            Coming from YNAB?{' '}
+            <Link
+              to="/import"
+              className="font-medium text-accent-ink underline-offset-4 hover:underline"
+            >
+              Import your plan
+            </Link>{' '}
+            and everything comes over. Or start fresh in three steps.
+          </p>
+        </div>
+      </div>
+      <ol className="mt-5 grid gap-3 sm:grid-cols-3">
+        {steps.map((step, index) => (
+          <li key={step.title} className="flex flex-col gap-2 rounded-lg bg-muted/60 p-4">
+            <span className="inline-flex size-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+              {index + 1}
+            </span>
+            <p className="font-semibold">{step.title}</p>
+            <p className="flex-1 text-sm text-muted-foreground">{step.body}</p>
+            {step.action}
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }
 
@@ -161,15 +219,7 @@ export function BudgetPage() {
 
       {budget.isError && <p className="text-negative">{budget.error.message}</p>}
       {budget.data && <UncategorizedNotice uncategorized={budget.data.uncategorized} />}
-      {importStatus.data?.canImport && (
-        <p className="rounded-lg border bg-card p-3 text-sm">
-          Your budget is empty. Coming from YNAB?{' '}
-          <Link to="/import" className="underline underline-offset-2">
-            Import your plan
-          </Link>
-          , or add accounts and categories to start fresh.
-        </p>
-      )}
+      {importStatus.data?.canImport && <Welcome onManage={() => setIsManaging(true)} />}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex gap-2">

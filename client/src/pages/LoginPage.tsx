@@ -41,7 +41,10 @@ export function LoginPage() {
       >
         <div className="flex items-center gap-3">
           <PennyMark className="size-10" />
-          <h1 className="text-xl font-semibold">Pretty Penny</h1>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight">Pretty Penny</h1>
+            <p className="text-sm text-muted-foreground">Sign in to your budget.</p>
+          </div>
         </div>
         <div className="space-y-1">
           <Label htmlFor="password">Password</Label>

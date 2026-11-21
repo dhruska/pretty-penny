@@ -13,7 +13,10 @@ function row(page: Page, text: string) {
 }
 
 async function createAccount(page: Page, name: string, startingBalance: string) {
-  await page.getByRole('button', { name: 'Add account' }).click();
+  await page
+    .getByRole('complementary', { name: 'Accounts' })
+    .getByRole('button', { name: 'Add account' })
+    .click();
   await page.getByLabel('Account name').fill(name);
   await page.getByLabel('Starting balance').fill(startingBalance);
   await page.getByRole('button', { name: 'Add account' }).click();

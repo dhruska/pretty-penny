@@ -81,7 +81,10 @@ test('navigates from the menu, which keeps names and balances on one line', asyn
 
   // Adding an account opens a dialog from the menu.
   await page.getByRole('button', { name: 'Menu' }).click();
-  await page.getByRole('button', { name: 'Add account' }).click();
+  await page
+    .getByRole('dialog', { name: 'Pretty Penny' })
+    .getByRole('button', { name: 'Add account' })
+    .click();
   await page.getByLabel('Account name').fill('Savings');
   await page.getByLabel('Starting balance', { exact: true }).fill('500');
   await page.getByRole('button', { name: 'Add account' }).click();

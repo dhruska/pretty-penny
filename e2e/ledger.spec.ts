@@ -26,7 +26,10 @@ async function addTransaction(
 test('manages an account and its transactions, keeping balances correct', async ({ page }) => {
   await page.goto('/');
 
-  await page.getByRole('button', { name: 'Add account' }).click();
+  await page
+    .getByRole('complementary', { name: 'Accounts' })
+    .getByRole('button', { name: 'Add account' })
+    .click();
   await page.getByLabel('Account name').fill('Checking');
   await page.getByLabel('Starting balance').fill('1,000.00');
   await page.getByRole('button', { name: 'Add account' }).click();
@@ -59,7 +62,10 @@ test('manages an account and its transactions, keeping balances correct', async 
 
 test('shows validation messages and refuses to delete an account in use', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Add account' }).click();
+  await page
+    .getByRole('complementary', { name: 'Accounts' })
+    .getByRole('button', { name: 'Add account' })
+    .click();
   await page.getByLabel('Account name').fill('Savings');
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(sidebarAccount(page, 'Savings')).toContainText('$0.00');
@@ -86,7 +92,10 @@ test('shows validation messages and refuses to delete an account in use', async 
 
 test('renames and deletes an account', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Add account' }).click();
+  await page
+    .getByRole('complementary', { name: 'Accounts' })
+    .getByRole('button', { name: 'Add account' })
+    .click();
   await page.getByLabel('Account name').fill('Old name');
   await page.getByLabel('Starting balance').fill('50');
   await page.getByRole('button', { name: 'Add account' }).click();

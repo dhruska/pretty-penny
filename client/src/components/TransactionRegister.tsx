@@ -34,9 +34,10 @@ import {
   type QueryClient,
 } from '@tanstack/react-query';
 import { cn } from 'cn';
-import { Check, Lock } from 'lucide-react';
+import { Check, Lock, Receipt } from 'lucide-react';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { ConfirmDelete } from './ConfirmDelete';
+import { EmptyState } from './EmptyState';
 import { FlagPicker } from './FlagPicker';
 import { Money } from './Money';
 import { TransactionForm } from './TransactionForm';
@@ -277,7 +278,7 @@ export function TransactionRegister({
   }
 
   if (transactions.length === 0) {
-    return <p className="text-sm text-muted-foreground">{emptyMessage}</p>;
+    return <EmptyState Icon={Receipt} title={emptyMessage} />;
   }
 
   return (

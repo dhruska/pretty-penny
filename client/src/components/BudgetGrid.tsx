@@ -13,6 +13,8 @@ import { useIsPhone } from '@/lib/useIsPhone';
 import { cn } from 'cn';
 import { useRef, useState } from 'react';
 import { AvailableButton, CategoryMoneyPanel } from './CategoryMoney';
+import { EmptyState } from './EmptyState';
+import { LayoutList } from 'lucide-react';
 import { Money } from './Money';
 
 interface BudgetGridProps {
@@ -269,9 +271,10 @@ export function BudgetGrid({ budget, showHidden, onAssign }: BudgetGridProps) {
 
   if (groups.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
-        No categories yet. Select Manage categories to add some.
-      </p>
+      <EmptyState Icon={LayoutList} title="No categories yet">
+        Categories are what you budget for, such as Rent or Groceries. Select Manage categories to
+        add some.
+      </EmptyState>
     );
   }
 
