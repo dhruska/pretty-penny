@@ -210,7 +210,7 @@ describe('locked transactions', () => {
     expect((await call('DELETE', `/api/transactions/${created.id}`)).statusCode).toBe(409);
     expect(
       (await call('DELETE', `/api/transactions/${created.id}?confirmReconciled=true`)).statusCode,
-    ).toBe(204);
+    ).toBe(200);
     expect((await account(checking.id)).balanceCents).toBe(1_000_00);
   });
 

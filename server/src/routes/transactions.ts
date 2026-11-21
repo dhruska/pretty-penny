@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Db, Executor } from '../db/client.js';
 import { accounts, categories, payees, transactionLines, transactions } from '../db/schema.js';
 import { FLAG_COLORS, type FlagColor } from '../flags.js';
+import { isSigned, restoreSnapshot, snapshotForDelete, type SignedSnapshot } from '../undo.js';
 import { resolvePayee } from './payees.js';
 import {
   amountCents,
@@ -65,6 +66,8 @@ interface LineRow {
 }
 
 const SEARCH_LIMIT = 500;
+/** The most transactions one page of a register can ask for. */
+const MAX_PAGE = 1000;
 const MAX_SPLIT_LINES = 50;
 
 const nullableId = { ...categoryId, type: ['integer', 'null'] };
@@ -187,6 +190,14 @@ const defaultCleared = (account: AccountInfo): Cleared =>
   account.type === 'cash' ? 'cleared' : 'uncleared';
 
 const escapeLike = (text: string) => text.replace(/[\\%_]/g, '\\$&');
+
+/** Search text that reads as an amount, such as "1,234.56", "$12" or "-5.5", in cents. */
+export function searchAmountCents(text: string): number | null {
+  const match = /^-?\$?(\d{1,3}(,\d{3}){1,3}|\d{1,12})(\.\d{1,2})?$/.exec(text.trim());
+  if (!match) return null;
+  const [whole, fraction = ''] = text.trim().replace(/[-$,]/g, '').split('.');
+  return Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
+}
 
 async function loadAccount(tx: Executor, id: number): Promise<AccountInfo | undefined> {
   const [account] = await tx
@@ -396,30 +407,57 @@ export async function createTransaction(
 }
 
 export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
-  app.get<{ Params: IdParams }>(
+  app.get<{ Params: IdParams; Querystring: { limit?: number; before?: number } }>(
     '/api/accounts/:id/transactions',
-    { schema: { params: idParams } },
+    {
+      schema: {
+        params: idParams,
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            // A page of the newest transactions; without a limit, every transaction.
+            limit: { type: 'integer', minimum: 1, maximum: MAX_PAGE },
+            // The next page starts after this transaction, in newest-first order.
+            before: categoryId,
+          },
+        },
+      },
+    },
     async (request, reply) => {
       const { id } = request.params;
+      const { limit, before } = request.query;
       if (!(await loadAccount(db, id))) {
         return reply.code(404).send({ message: 'Account not found' });
       }
 
-      const rows = await db
+      const order = sql`(${transactions.date}, ${transactions.createdAt}, ${transactions.id})`;
+      const keyOf = (transactionId: number) =>
+        sql`(select date, created_at, id from transactions where id = ${transactionId})`;
+      const rows = await findTransactions(
+        db,
+        and(
+          eq(transactions.accountId, id),
+          before === undefined ? undefined : sql`${order} < ${keyOf(before)}`,
+        ),
+        limit,
+      );
+      if (rows.length === 0) return [];
+
+      // Running balances: the newest row's is the sum of everything up to it, and each older
+      // row's is the one above it less that row's amount. One sum, however long the history.
+      const [top] = await db
         .select({
-          ...listColumns,
-          runningBalanceCents: sql<number>`sum(${transactions.amountCents}) over (
-            order by ${transactions.date}, ${transactions.createdAt}, ${transactions.id}
-          )`.mapWith(Number),
+          total: sql<number>`coalesce(sum(${transactions.amountCents}), 0)`.mapWith(Number),
         })
         .from(transactions)
-        .innerJoin(accounts, eq(accounts.id, transactions.accountId))
-        .leftJoin(payees, eq(payees.id, transactions.payeeId))
-        .leftJoin(pair, eq(pair.id, transactions.transferTransactionId))
-        .leftJoin(pairAccount, eq(pairAccount.id, pair.accountId))
-        .where(eq(transactions.accountId, id))
-        .orderBy(...newestFirst);
-      return rows.map(withCategory);
+        .where(and(eq(transactions.accountId, id), sql`${order} <= ${keyOf(rows[0]!.id)}`));
+      let balance = top!.total;
+      return rows.map((row) => {
+        const runningBalanceCents = balance;
+        balance -= row.amountCents;
+        return { ...row, runningBalanceCents };
+      });
     },
   );
 
@@ -449,13 +487,17 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
       const text = q?.trim();
       if (text) {
         const pattern = `%${escapeLike(text)}%`;
+        // Text that reads as an amount, such as 1,234.56 or $12, also finds that amount either way.
+        const cents = searchAmountCents(text);
         conditions.push(
           or(
             ilike(payees.name, pattern),
             ilike(transactions.memo, pattern),
             ilike(accounts.name, pattern),
             ilike(pairAccount.name, pattern),
+            sql`${transactions.date}::text ilike ${pattern}`,
             anyLine(sql`(c.name ilike ${pattern} or l.memo ilike ${pattern})`),
+            cents === null ? undefined : sql`abs(${transactions.amountCents}) = ${cents}`,
           ),
         );
       }
@@ -690,14 +732,54 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
         if (locked) throw new HttpError(409, RECONCILED_MESSAGE, RECONCILED_CODE);
       }
 
-      // Deleting one side of a transfer cascades to the other side.
-      const deleted = await db
-        .delete(transactions)
-        .where(eq(transactions.id, request.params.id))
-        .returning({ id: transactions.id });
-      if (deleted.length === 0) return reply.code(404).send({ message: 'Transaction not found' });
+      return db.transaction(async (tx) => {
+        const [target] = await tx
+          .select({ id: transactions.id, pairId: transactions.transferTransactionId })
+          .from(transactions)
+          .where(eq(transactions.id, request.params.id));
+        if (!target) return reply.code(404).send({ message: 'Transaction not found' });
 
-      return reply.code(204).send();
+        // The snapshot lets the app offer Undo. Deleting one side of a transfer cascades to the
+        // other side, so both go in it.
+        const undo = await snapshotForDelete(
+          tx,
+          target.pairId === null ? [target.id] : [target.id, target.pairId],
+        );
+        await tx.delete(transactions).where(eq(transactions.id, target.id));
+        return { undo };
+      });
+    },
+  );
+
+  // Undo for a delete: puts back exactly what the delete removed.
+  app.post<{ Body: SignedSnapshot }>(
+    '/api/transactions/restore',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['snapshot', 'signature'],
+          properties: {
+            snapshot: {
+              type: 'object',
+              required: ['transactions', 'lines'],
+              properties: {
+                transactions: { type: 'array', minItems: 1, maxItems: 2 },
+                lines: { type: 'array', maxItems: 100 },
+              },
+            },
+            signature: { type: 'string', maxLength: 128 },
+          },
+        },
+      },
+    },
+    async (request) => {
+      if (!isSigned(request.body)) {
+        throw new HttpError(400, 'This undo has expired. Add the transaction again instead.');
+      }
+      await db.transaction((tx) => restoreSnapshot(tx, request.body.snapshot));
+      return { restored: request.body.snapshot.transactions.map((row) => row.id) };
     },
   );
 }

@@ -167,7 +167,8 @@ describe('transactions', () => {
 
     const response = await call('DELETE', `/api/transactions/${created.id}`);
 
-    expect(response.statusCode).toBe(204);
+    expect(response.statusCode).toBe(200);
+    expect(response.json().undo.snapshot.transactions).toHaveLength(1);
     expect(await balanceOf(account.id)).toBe(1000_00);
   });
 

@@ -386,7 +386,7 @@ describe('transfers', () => {
     await transfer(checking.id, savings.id, -200_00);
     const [savingsSide] = await listTransactions(savings.id);
 
-    expect((await call('DELETE', `/api/transactions/${savingsSide!.id}`)).statusCode).toBe(204);
+    expect((await call('DELETE', `/api/transactions/${savingsSide!.id}`)).statusCode).toBe(200);
 
     expect(await balanceOf(checking.id)).toBe(1_000_00);
     expect(await listTransactions(checking.id)).toHaveLength(1);
