@@ -344,6 +344,17 @@ describe('YNAB import', () => {
     expect(await get(`/api/accounts/${oldSavings!.id}/scheduled`)).toEqual([]);
   });
 
+  it('brings unapproved transactions in as needing review, as in YNAB', async () => {
+    expect((await runImport()).statusCode).toBe(200);
+    const unapproved = await db
+      .select({ date: transactions.date, amountCents: transactions.amountCents })
+      .from(transactions)
+      .where(eq(transactions.approved, false));
+    expect(unapproved).toEqual([{ date: '2026-10-12', amountCents: -12000 }]);
+    const review = await get<{ transactions: unknown[] }>('/api/transactions?needsReview=true');
+    expect(review.transactions).toHaveLength(1);
+  });
+
   it('imports flags and their names', async () => {
     const report = (await runImport()).json<ImportReport>();
     expect(report.notes.flagged).toBe(2);

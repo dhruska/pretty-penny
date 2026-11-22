@@ -77,6 +77,8 @@ export interface PlannedTransaction {
   memo: string;
   amountCents: number;
   cleared: YnabCleared;
+  /** False for a transaction YNAB has as unapproved, which needs review here too. */
+  approved: boolean;
   isStartingBalance: boolean;
   category: CategoryRef;
   /** Set for a split; `category` is then unused. */
@@ -86,6 +88,7 @@ export interface PlannedTransaction {
   transfer: {
     accountYnabId: string;
     cleared: YnabCleared;
+    approved: boolean;
     memo: string;
     flag: FlagColor | null;
   } | null;
@@ -387,6 +390,7 @@ export function planImport(plan: YnabPlan): ImportPlan {
     memo: transaction.memo ?? '',
     amountCents: cents(transaction.amount),
     cleared: transaction.cleared,
+    approved: transaction.approved,
     isStartingBalance: false,
     category: null,
     lines: null,
@@ -437,6 +441,7 @@ export function planImport(plan: YnabPlan): ImportPlan {
             transfer: {
               accountYnabId: other.ynabId,
               cleared: partner.cleared,
+              approved: partner.approved,
               memo: partner.memo ?? '',
               flag: flagOf(partner.flag_color),
             },
@@ -492,6 +497,7 @@ export function planImport(plan: YnabPlan): ImportPlan {
             transfer: {
               accountYnabId: other.ynabId,
               cleared: partner.cleared,
+              approved: partner.approved,
               memo: partner.memo ?? '',
               flag: flagOf(partner.flag_color),
             },

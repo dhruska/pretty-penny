@@ -105,7 +105,7 @@ export function noteLines(notes: ImportNotes): string[] {
   }
   if (notes.unapproved > 0) {
     lines.push(
-      `${plural(notes.unapproved, 'unapproved transaction is', 'unapproved transactions are')} imported as usual, since Pretty Penny has no approval step.`,
+      `${plural(notes.unapproved, 'unapproved transaction needs', 'unapproved transactions need')} review, as in YNAB.`,
     );
   }
   if (notes.flagged > 0) {

@@ -150,10 +150,13 @@ export async function runImport(tx: Executor, plan: ImportPlan): Promise<ImportR
     try {
       await createTransaction(tx, accountIds.get(planned.accountYnabId)!, body, {
         cleared: planned.cleared,
+        // Unapproved in YNAB means needing review here too.
+        approved: planned.approved,
         isStartingBalance: planned.isStartingBalance,
         ...(planned.transfer && {
           pair: {
             cleared: planned.transfer.cleared,
+            approved: planned.transfer.approved,
             memo: planned.transfer.memo,
             flag: planned.transfer.flag,
           },

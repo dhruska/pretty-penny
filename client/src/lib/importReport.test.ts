@@ -154,7 +154,7 @@ describe('noteLines', () => {
       '2 transactions or split lines have no category. Pretty Penny leaves these out of the budget until they’re categorized.',
       '1 transaction moves to Uncategorized, because its category isn’t imported.',
       '2 transfers are missing the other side in YNAB and become ordinary transactions.',
-      '1 unapproved transaction is imported as usual, since Pretty Penny has no approval step.',
+      '1 unapproved transaction needs review, as in YNAB.',
       '3 flagged transactions keep their flags. Flag names: Red is “Check”, Blue is “Work”.',
       'Targets, category and account notes, and payee locations aren’t imported. Transaction memos are.',
     ]);
