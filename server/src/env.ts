@@ -43,3 +43,14 @@ export const getBackupDirsSetting = () => process.env.BACKUP_DIRS;
 
 /** Where Postgres's command line tools are; Homebrew's Postgres 17 by default. */
 export const getPgBin = () => process.env.PG_BIN || undefined;
+
+/** Plaid's settings for bank sync; see docs/self-hosting.md. Browser tests set PLAID_API_URL. */
+export const getPlaidOptions = () => ({
+  clientId: process.env.PLAID_CLIENT_ID || undefined,
+  secret: process.env.PLAID_SECRET || undefined,
+  environment: process.env.PLAID_ENV || undefined,
+  baseUrl: process.env.PLAID_API_URL || undefined,
+});
+
+/** Encrypts bank access tokens in the database; kept out of the database and its backups. */
+export const getBankTokenKey = () => process.env.BANK_TOKEN_KEY || undefined;

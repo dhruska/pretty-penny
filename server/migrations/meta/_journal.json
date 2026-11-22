@@ -71,6 +71,13 @@
       "when": 1795234690711,
       "tag": "0009_login",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795309485481,
+      "tag": "0010_bank_connections",
+      "breakpoints": true
     }
   ]
 }

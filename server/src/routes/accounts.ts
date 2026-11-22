@@ -4,6 +4,8 @@ import { isBudgetType, type AccountType } from '../account-types.js';
 import type { Db, Executor } from '../db/client.js';
 import {
   accounts,
+  bankAccounts,
+  bankConnections,
   categories,
   READY_TO_ASSIGN_KEY,
   transactionLines,
@@ -72,6 +74,26 @@ async function addBalanceTransaction(
   });
 }
 
+/** Creates an account with its starting balance, as of the given date. */
+export async function insertAccount(
+  tx: Executor,
+  values: { name: string; type: AccountType; startingBalanceCents: number; date: string },
+) {
+  const [created] = await tx
+    .insert(accounts)
+    .values({ name: values.name.trim(), type: values.type, onBudget: isBudgetType(values.type) })
+    .returning(accountColumns);
+  if (values.startingBalanceCents !== 0) {
+    await addBalanceTransaction(tx, created!, {
+      date: values.date,
+      payee: STARTING_BALANCE_PAYEE,
+      amountCents: values.startingBalanceCents,
+      isStartingBalance: true,
+    });
+  }
+  return created!;
+}
+
 export function registerAccountRoutes(app: FastifyInstance, db: Db) {
   async function findAccount(id: number) {
     const [account] = await db.select(accountColumns).from(accounts).where(eq(accounts.id, id));
@@ -79,7 +101,7 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db) {
   }
 
   app.get('/api/accounts', async () => {
-    return db
+    const rows = await db
       .select({
         ...accountColumns,
         balanceCents: sql<number>`coalesce(sum(${transactions.amountCents}), 0)`.mapWith(Number),
@@ -87,11 +109,48 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db) {
           sum(${transactions.amountCents}) filter (where ${transactions.cleared} <> 'uncleared'),
           0
         )`.mapWith(Number),
+        bankAccountId: bankAccounts.id,
+        bankMask: bankAccounts.mask,
+        bankBalanceCents: bankAccounts.balanceCents,
+        bankInstitutionName: bankConnections.institutionName,
+        bankStatus: bankConnections.status,
+        bankProblem: bankConnections.problem,
+        bankUpdatedAt: bankConnections.updatedAt,
       })
       .from(accounts)
       .leftJoin(transactions, eq(transactions.accountId, accounts.id))
-      .groupBy(accounts.id)
+      .leftJoin(bankAccounts, eq(bankAccounts.accountId, accounts.id))
+      .leftJoin(bankConnections, eq(bankConnections.id, bankAccounts.connectionId))
+      .groupBy(accounts.id, bankAccounts.id, bankConnections.id)
       .orderBy(asc(accounts.createdAt), asc(accounts.id));
+
+    // The linked bank account, if any, with what the bank last said about it.
+    return rows.map(
+      ({
+        bankAccountId,
+        bankMask,
+        bankBalanceCents,
+        bankInstitutionName,
+        bankStatus,
+        bankProblem,
+        bankUpdatedAt,
+        ...account
+      }) => ({
+        ...account,
+        bank:
+          bankAccountId === null
+            ? null
+            : {
+                bankAccountId,
+                institutionName: bankInstitutionName!,
+                mask: bankMask,
+                balanceCents: bankBalanceCents,
+                status: bankStatus!,
+                problem: bankProblem,
+                updatedAt: bankUpdatedAt,
+              },
+      }),
+    );
   });
 
   app.post<{ Body: CreateAccountBody }>(
@@ -107,26 +166,10 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db) {
       },
     },
     async (request, reply) => {
-      const { startingBalanceCents: balanceCents, date: startingDate } = request.body;
-      const type = request.body.type ?? 'checking';
-
-      const account = await db.transaction(async (tx) => {
-        const [created] = await tx
-          .insert(accounts)
-          .values({ name: request.body.name.trim(), type, onBudget: isBudgetType(type) })
-          .returning(accountColumns);
-        if (balanceCents !== 0) {
-          await addBalanceTransaction(tx, created!, {
-            date: startingDate,
-            payee: STARTING_BALANCE_PAYEE,
-            amountCents: balanceCents,
-            isStartingBalance: true,
-          });
-        }
-        return created!;
-      });
-
-      return reply.code(201).send({ ...account, balanceCents });
+      const account = await db.transaction((tx) =>
+        insertAccount(tx, { ...request.body, type: request.body.type ?? 'checking' }),
+      );
+      return reply.code(201).send({ ...account, balanceCents: request.body.startingBalanceCents });
     },
   );
 

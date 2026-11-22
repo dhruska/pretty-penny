@@ -1,10 +1,13 @@
 import { fileURLToPath } from 'node:url';
 import { buildApp } from './app.js';
+import { bankConfig, refreshAllConnections } from './bank/service.js';
 import { createDb } from './db/client.js';
 import {
   getApiPort,
+  getBankTokenKey,
   getDatabaseUrl,
   getHost,
+  getPlaidOptions,
   getPublicUrl,
   getSecureCookies,
   getYnabApiUrl,
@@ -17,7 +20,13 @@ const HOUR_MS = 60 * 60 * 1000;
 
 const { db } = createDb(getDatabaseUrl());
 const production = isProduction();
+const bank = bankConfig({
+  plaid: getPlaidOptions(),
+  bankTokenKey: getBankTokenKey(),
+  publicUrl: getPublicUrl(),
+});
 const app = buildApp(db, {
+  bank,
   logger: true,
   ynabApiUrl: getYnabApiUrl(),
   secureCookies: getSecureCookies(),
@@ -42,7 +51,24 @@ async function postScheduled() {
   }
 }
 
+/** Fetches each bank connection's balances, and notices connections that need fixing. */
+async function refreshBanks() {
+  try {
+    const result = await refreshAllConnections(db, bank);
+    for (const failure of result.failed) {
+      app.log.warn(`Bank connection ${failure.connectionId} not updated: ${failure.message}`);
+    }
+  } catch (error) {
+    app.log.error(error, 'Updating bank connections failed');
+  }
+}
+
+async function hourly() {
+  await postScheduled();
+  await refreshBanks();
+}
+
 await app.listen({ port: getApiPort(), host: getHost() });
 
-await postScheduled();
-setInterval(postScheduled, HOUR_MS);
+await hourly();
+setInterval(hourly, HOUR_MS);

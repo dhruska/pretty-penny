@@ -160,6 +160,43 @@ export const flagNames = pgTable('flag_names', {
   name: text().notNull(),
 });
 
+/** A bank login connected through Plaid (Plaid calls it an Item). */
+export const bankConnections = pgTable('bank_connections', {
+  id: integer().primaryKey().generatedAlwaysAsIdentity(),
+  plaidItemId: text('plaid_item_id').notNull().unique(),
+  // Encrypted with BANK_TOKEN_KEY, which isn't in the database or its backups.
+  accessTokenEncrypted: text('access_token_encrypted').notNull(),
+  institutionName: text('institution_name').notNull(),
+  // One of 'ok', 'needs_sign_in' or 'error', with a message for the last two.
+  status: text().notNull().default('ok'),
+  problem: text(),
+  // When balances were last fetched from Plaid.
+  updatedAt: timestamp('updated_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** An account at a connected bank, and the Pretty Penny account it's linked to, if any. */
+export const bankAccounts = pgTable('bank_accounts', {
+  id: integer().primaryKey().generatedAlwaysAsIdentity(),
+  connectionId: integer('connection_id')
+    .notNull()
+    .references(() => bankConnections.id, { onDelete: 'cascade' }),
+  plaidAccountId: text('plaid_account_id').notNull().unique(),
+  name: text().notNull(),
+  mask: text(),
+  plaidType: text('plaid_type').notNull(),
+  plaidSubtype: text('plaid_subtype'),
+  // Negative when money is owed, as on a card. Null when the bank doesn't say.
+  balanceCents: bigint('balance_cents', { mode: 'number' }),
+  // Each Pretty Penny account links to at most one bank account.
+  accountId: integer('account_id')
+    .unique()
+    .references(() => accounts.id, { onDelete: 'set null' }),
+  // The first date to import transactions from. A new account starts the day after its
+  // starting balance, which already includes that day's transactions.
+  importFrom: date('import_from', { mode: 'string' }),
+});
+
 /** App-wide settings, such as the password hash. */
 export const settings = pgTable('settings', {
   key: text().primaryKey(),

@@ -1,9 +1,11 @@
 import { sql } from 'drizzle-orm';
 import fastifyStatic from '@fastify/static';
 import Fastify, { LogController, type FastifyInstance } from 'fastify';
+import { bankConfig, type BankConfig, type PlaidOptions } from './bank/service.js';
 import type { Db } from './db/client.js';
 import { registerAccountRoutes } from './routes/accounts.js';
 import { registerAuthRoutes, type AuthOptions } from './routes/auth.js';
+import { registerBankRoutes } from './routes/bank.js';
 import { registerBudgetRoutes } from './routes/budget.js';
 import { registerCategoryRoutes } from './routes/categories.js';
 import { registerFlagRoutes } from './routes/flags.js';
@@ -21,8 +23,14 @@ interface AppOptions extends AuthOptions {
   today?: () => string;
   /** YNAB's API address; browser tests point it at a fake server. */
   ynabApiUrl?: string;
-  /** Replaces network requests to YNAB in tests. */
+  /** Replaces network requests to YNAB and Plaid in tests. */
   fetch?: FetchFn;
+  /** Plaid's settings from .env; bank sync explains what's missing until they're all there. */
+  plaid?: PlaidOptions;
+  /** Encrypts bank access tokens; see docs/self-hosting.md. */
+  bankTokenKey?: string;
+  /** Built once by the caller when the hourly job shares it; otherwise built from the above. */
+  bank?: BankConfig;
   /** The built client's folder. In production one server serves both the app and the API. */
   clientDir?: string;
   /** Logs every request; production turns this off, so logs stay small. */
@@ -65,6 +73,13 @@ export function buildApp(db: Db, options: AppOptions = {}) {
     app,
     db,
     createYnabClient(options.ynabApiUrl ?? DEFAULT_YNAB_API_URL, options.fetch),
+    options.today ?? localToday,
+  );
+
+  registerBankRoutes(
+    app,
+    db,
+    options.bank ?? bankConfig({ ...options, fetch: options.fetch }),
     options.today ?? localToday,
   );
 
