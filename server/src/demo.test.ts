@@ -62,6 +62,10 @@ describe('demo data', () => {
       url: '/api/budget?month=2027-03&currentMonth=2027-03',
     });
     expect(budget.json().readyToAssignCents).toBe(3650_00);
+
+    // A few transactions need review, as though a bank just sent them.
+    const review = await app.inject({ method: 'GET', url: '/api/transactions?needsReview=true' });
+    expect(review.json().transactions).toHaveLength(3);
   });
 
   it('leaves a database with data alone', async () => {

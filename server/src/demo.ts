@@ -51,6 +51,19 @@ export function demoPlan(currentMonth: string): YnabPlan {
     scheduled.date_first = shiftDate(scheduled.date_first, shift);
     scheduled.date_next = shiftDate(scheduled.date_next, shift);
   }
+  // The newest two ordinary spending transactions need review, as though a bank just sent them.
+  const newest = plan.transactions
+    .filter(
+      (transaction) =>
+        !transaction.deleted &&
+        !transaction.transfer_account_id &&
+        transaction.category_id &&
+        transaction.amount < 0 &&
+        transaction.approved,
+    )
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 2);
+  for (const transaction of newest) transaction.approved = false;
   return plan;
 }
 
