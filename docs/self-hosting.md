@@ -66,6 +66,11 @@ SECURE_COOKIES=true
 PUBLIC_URL=
 # Filled in under Backing up.
 BACKUP_DIRS=
+# Filled in under Bank sync, if you use it.
+PLAID_CLIENT_ID=
+PLAID_SECRET=
+PLAID_ENV=
+BANK_TOKEN_KEY=
 ```
 
 ## 4. Build and set up the database
@@ -183,6 +188,48 @@ It asks you to type `restore` to confirm. Then it backs up the current data, sto
 
 To restore onto a new Mac, follow steps 1 to 4 of this guide (skip `npm run set-password`, since the backup has your password), then run `deploy/restore.sh` with the backup, then continue from step 5.
 
+## Bank sync
+
+Pretty Penny can link accounts to your banks through [Plaid](https://plaid.com), which shows each bank's balance next to Pretty Penny's. You sign in to each bank in Plaid's window; Pretty Penny never sees your bank password. Plaid's free Trial plan is enough for personal use, with one limit: **10 bank logins in all**. Removing a connection doesn't give its login back, so when one stops working, use **Fix connection** rather than removing it and connecting again.
+
+Pretty Penny stays reachable only on your tailnet. It asks Plaid for updates every hour, so Plaid never needs to reach it.
+
+1. **Create a Plaid account** at [dashboard.plaid.com](https://dashboard.plaid.com/signup). New accounts start on the free Trial plan, which uses real bank data.
+
+2. **Note your keys.** On the dashboard's **Keys** page, copy the client ID and the **Production** secret. Plaid's Sandbox secret works with test banks only, which is useful for trying it out first.
+
+3. **Register the address banks send you back to.** Many banks sign you in on their own site and then return you to Pretty Penny. In the dashboard's **API** settings, under **Allowed redirect URIs**, add your `PUBLIC_URL` followed by `/bank/oauth`, such as:
+
+   ```text
+   https://mac-mini.your-tailnet.ts.net/bank/oauth
+   ```
+
+4. **Make an encryption key.** Pretty Penny encrypts Plaid's access to your banks with this key before saving it. The key stays in `.env`, which isn't in the database or its backups.
+
+   ```sh
+   openssl rand -base64 32
+   ```
+
+   **Save it in your password manager.** Restoring a backup onto another Mac needs it; without it, you'd remove each connection and connect the bank again, using new logins.
+
+5. **Add the settings to `.env`**, then restart and check:
+
+   ```sh
+   PLAID_CLIENT_ID=your client ID
+   PLAID_SECRET=your Production secret
+   PLAID_ENV=production
+   BANK_TOKEN_KEY=the key from step 4
+   ```
+
+   ```sh
+   deploy/install-service.sh
+   deploy/status.sh
+   ```
+
+6. **Connect your banks.** Open **Bank connections** in the menu and select **Connect a bank**. Afterward, choose the Pretty Penny account for each bank account, add a new one, or leave it unlinked. A new account starts with the bank's balance today. You can also link an account from **Edit account**.
+
+To try it with test banks first, use the Sandbox secret with `PLAID_ENV=sandbox`, and sign in to a test bank with the username `user_good` and password `pass_good`. Remove those connections before switching to `production`; connections don't move between the two.
+
 ## Troubleshooting
 
 Start with `deploy/status.sh`, which checks each part.
@@ -193,5 +240,8 @@ Start with `deploy/status.sh`, which checks each part.
 - **Tailscale isn't serving**: `tailscale serve status`, and `tailscale serve --bg 3001` again if needed.
 - **"Changes must come from Pretty Penny itself"**: `PUBLIC_URL` in `.env` doesn't match the address you opened. Fix it, then `deploy/install-service.sh`.
 - **A backup folder fails**: the status line says why. "Doesn't exist" usually means the drive isn't connected. "Not allowed" means the Full Disk Access step under Backing up is needed again.
+- **A bank needs you to sign in again**: banks ask for this every so often. Open **Bank connections** and select **Fix connection**, which uses the same login.
+- **Bank connections says something isn't set**: a Plaid setting in `.env` is missing or mistyped. Fix it, then `deploy/install-service.sh`.
+- **"Can't be read with the current BANK_TOKEN_KEY"**: `.env` has a different key from the one the connections were saved with, as after restoring onto a new Mac. Put back the saved key from your password manager.
 - **Forgot the password**: `npm run set-password` sets a new one and signs out every device.
 - **Stopping Pretty Penny**: `deploy/uninstall-service.sh` stops and removes the service. Your data stays in Postgres, and `deploy/install-service.sh` brings it back.

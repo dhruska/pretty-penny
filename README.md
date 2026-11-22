@@ -98,6 +98,19 @@ Importing only works on an empty budget. To start over in development, recreate 
 npm run db:migrate
 ```
 
+## Bank sync
+
+Accounts can be linked to banks through Plaid, under **Bank connections** in the sidebar. To try it in development, create a free Plaid account and add its Sandbox keys to `.env`, with a key made by `openssl rand -base64 32`:
+
+```sh
+PLAID_CLIENT_ID=your client ID
+PLAID_SECRET=your Sandbox secret
+PLAID_ENV=sandbox
+BANK_TOKEN_KEY=your key
+```
+
+Sandbox has only test banks; sign in with `user_good` and `pass_good`. Tests use a fake Plaid and never contact Plaid. For real banks, see the Bank sync section of [Running Pretty Penny at home](docs/self-hosting.md#bank-sync).
+
 ## Running it at home
 
 To run Pretty Penny on a Mac that stays on, such as a Mac mini, and use it from your phone over Tailscale, follow [Running Pretty Penny at home](docs/self-hosting.md).
