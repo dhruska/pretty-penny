@@ -190,7 +190,7 @@ To restore onto a new Mac, follow steps 1 to 4 of this guide (skip `npm run set-
 
 ## Bank sync
 
-Pretty Penny can link accounts to your banks through [Plaid](https://plaid.com), which shows each bank's balance next to Pretty Penny's. You sign in to each bank in Plaid's window; Pretty Penny never sees your bank password. Plaid's free Trial plan is enough for personal use, with one limit: **10 bank logins in all**. Removing a connection doesn't give its login back, so when one stops working, use **Fix connection** rather than removing it and connecting again.
+Pretty Penny can link accounts to your banks through [Plaid](https://plaid.com). New bank transactions then arrive on their own for you to review, as in YNAB, and each bank's balance shows next to Pretty Penny's. You sign in to each bank in Plaid's window; Pretty Penny never sees your bank password. Plaid's free Trial plan is enough for personal use, with one limit: **10 bank logins in all**. Removing a connection doesn't give its login back, so when one stops working, use **Fix connection** rather than removing it and connecting again.
 
 Pretty Penny stays reachable only on your tailnet. It asks Plaid for updates every hour, so Plaid never needs to reach it.
 
@@ -227,6 +227,10 @@ Pretty Penny stays reachable only on your tailnet. It asks Plaid for updates eve
    ```
 
 6. **Connect your banks.** Open **Bank connections** in the menu and select **Connect a bank**. Afterward, choose the Pretty Penny account for each bank account, add a new one, or leave it unlinked. A new account starts with the bank's balance today. You can also link an account from **Edit account**.
+
+7. **Check where importing starts.** Each linked account shows "Importing from" a date, with **Change**. For an account you already had, it's 3 days before your newest reconciled transaction, as in YNAB, so reconciling before linking keeps the overlap small. Transactions you entered that match an import, by amount and within 10 days, aren't duplicated.
+
+New transactions arrive every hour, or when you select **Import now** on an account. They count in your budget right away, marked as needing review, with an **Approve** button. **Approve all** approves an account's at once, **Reject** removes one for good, and saving an edit approves it too. Pending transactions show in their own section until they post. Right after connecting, Plaid can take a few minutes to gather history.
 
 To try it with test banks first, use the Sandbox secret with `PLAID_ENV=sandbox`, and sign in to a test bank with the username `user_good` and password `pass_good`. Remove those connections before switching to `production`; connections don't move between the two.
 

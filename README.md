@@ -100,7 +100,7 @@ npm run db:migrate
 
 ## Bank sync
 
-Accounts can be linked to banks through Plaid, under **Bank connections** in the sidebar. To try it in development, create a free Plaid account and add its Sandbox keys to `.env`, with a key made by `openssl rand -base64 32`:
+Accounts can be linked to banks through Plaid, under **Bank connections** in the sidebar. New transactions then import every hour for review, matching ones entered by hand. To try it in development, create a free Plaid account and add its Sandbox keys to `.env`, with a key made by `openssl rand -base64 32`:
 
 ```sh
 PLAID_CLIENT_ID=your client ID
