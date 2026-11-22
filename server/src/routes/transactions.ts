@@ -1,9 +1,18 @@
-import { and, desc, eq, gte, ilike, inArray, lte, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, ilike, inArray, isNotNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { FastifyInstance } from 'fastify';
 import type { Db, Executor } from '../db/client.js';
-import { accounts, categories, payees, transactionLines, transactions } from '../db/schema.js';
+import { absorbOtherSide, reimport, rejectImports, releaseImports } from '../bank/importer.js';
+import {
+  accounts,
+  bankTransactions,
+  categories,
+  payees,
+  transactionLines,
+  transactions,
+} from '../db/schema.js';
 import { FLAG_COLORS, type FlagColor } from '../flags.js';
+import { localToday } from '../schedule.js';
 import { isSigned, restoreSnapshot, snapshotForDelete, type SignedSnapshot } from '../undo.js';
 import { resolvePayee } from './payees.js';
 import {
@@ -49,6 +58,8 @@ interface SearchQuery {
   cleared?: Cleared | 'reconciled';
   /** One color, or 'any' for every flagged transaction. */
   flag?: FlagColor | 'any';
+  /** Only transactions from a bank that still need review. */
+  needsReview?: boolean;
 }
 
 interface AccountInfo {
@@ -141,6 +152,20 @@ const listColumns = {
   transferAccountId: pair.accountId,
   transferAccountName: pairAccount.name,
   lines: linesColumn,
+  approved: transactions.approved,
+  // The bank transaction it came from or matched, if any.
+  bank: sql<{ name: string; matched: boolean; institutionName: string } | null>`(
+    select json_build_object(
+      'name', bt.name,
+      'matched', bt.matched_cleared is not null,
+      'institutionName', bc.institution_name
+    )
+    from bank_transactions bt
+    join bank_accounts ba on ba.id = bt.bank_account_id
+    join bank_connections bc on bc.id = ba.connection_id
+    where bt.transaction_id = ${transactions.id}
+    limit 1
+  )`,
 };
 
 const newestFirst = [
@@ -356,8 +381,10 @@ export interface CreateOptions {
   cleared?: ClearedStatus;
   /** Import only: marks an account's starting balance. */
   isStartingBalance?: boolean;
+  /** Imports from a bank, or unapproved YNAB transactions, start out needing review. */
+  approved?: boolean;
   /** Import only: the other side of a transfer keeps its own status, memo and flag. */
-  pair?: { cleared: ClearedStatus; memo: string; flag?: FlagColor | null };
+  pair?: { cleared: ClearedStatus; memo: string; flag?: FlagColor | null; approved?: boolean };
 }
 
 /** Creates a transaction, with its transfer pair and category lines, and returns its id. */
@@ -381,6 +408,7 @@ export async function createTransaction(
       cleared: options.cleared ?? body.cleared ?? defaultCleared(account),
       flag: body.flag ?? null,
       isStartingBalance: options.isStartingBalance ?? false,
+      approved: options.approved ?? true,
       scheduledTransactionId: options.scheduledTransactionId ?? null,
     })
     .returning({ id: transactions.id });
@@ -399,6 +427,7 @@ export async function createTransaction(
         cleared: options.pair.cleared,
         memo: options.pair.memo.trim(),
         flag: options.pair.flag ?? null,
+        approved: options.pair.approved ?? true,
       })
       .where(eq(transactions.id, pairId));
   }
@@ -406,7 +435,18 @@ export async function createTransaction(
   return row!.id;
 }
 
-export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
+/** Fields that make an edit, which approves a transaction needing review, as decided. */
+const EDIT_FIELDS = [
+  'date',
+  'payee',
+  'memo',
+  'amountCents',
+  'categoryId',
+  'lines',
+  'transferAccountId',
+] as const;
+
+export function registerTransactionRoutes(app: FastifyInstance, db: Db, today = localToday) {
   app.get<{ Params: IdParams; Querystring: { limit?: number; before?: number } }>(
     '/api/accounts/:id/transactions',
     {
@@ -476,12 +516,22 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
             to: date,
             cleared: { type: 'string', enum: ['uncleared', 'cleared', 'reconciled'] },
             flag: { type: 'string', enum: [...FLAG_COLORS, 'any'] },
+            needsReview: { type: 'boolean' },
           },
         },
       },
     },
     async (request) => {
-      const { q, accountId, categoryId: category, from, to, cleared: status, flag } = request.query;
+      const {
+        q,
+        accountId,
+        categoryId: category,
+        from,
+        to,
+        cleared: status,
+        flag,
+        needsReview,
+      } = request.query;
       const conditions: (SQL | undefined)[] = [];
 
       const text = q?.trim();
@@ -512,6 +562,7 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
       if (status) conditions.push(eq(transactions.cleared, status));
       if (flag === 'any') conditions.push(sql`${transactions.flag} is not null`);
       else if (flag) conditions.push(eq(transactions.flag, flag));
+      if (needsReview) conditions.push(eq(transactions.approved, false));
 
       const rows = await findTransactions(db, and(...conditions), SEARCH_LIMIT + 1);
       return { transactions: rows.slice(0, SEARCH_LIMIT), hasMore: rows.length > SEARCH_LIMIT };
@@ -662,7 +713,10 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
           if (affectsBudget) throw new HttpError(409, RECONCILED_MESSAGE, RECONCILED_CODE);
         }
 
+        const edited = EDIT_FIELDS.some((field) => body[field] !== undefined);
         const values = {
+          // Saving an edit approves a transaction needing review; cleared and flag don't.
+          ...(edited && { approved: true }),
           date: body.date ?? current.date,
           memo: body.memo?.trim() ?? current.memo,
           amountCents: amount,
@@ -677,7 +731,10 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
         };
 
         const keepPair = currentPair !== undefined && other?.id === currentPair.accountId;
+        let released: { bankAccountId: number; id: number }[] = [];
         if (currentPair && !keepPair) {
+          // A bank transaction the old other side came from imports again on its own.
+          released = await releaseImports(tx, [currentPair.id]);
           await tx
             .update(transactions)
             .set({ transferTransactionId: null })
@@ -697,9 +754,15 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
             .where(eq(transactions.id, pairId));
         } else if (other) {
           pairId = await createPair(tx, id, other, values);
+          // The other account's matching import becomes this transfer's other side.
+          await absorbOtherSide(tx, pairId);
         }
 
         await writeLines(tx, { self: id, pair: pairId }, holder, lines);
+        if (pairId !== null && edited) {
+          await tx.update(transactions).set({ approved: true }).where(eq(transactions.id, pairId));
+        }
+        await reimport(tx, released, today());
         return findTransaction(tx, id);
       });
     },
@@ -741,10 +804,10 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
 
         // The snapshot lets the app offer Undo. Deleting one side of a transfer cascades to the
         // other side, so both go in it.
-        const undo = await snapshotForDelete(
-          tx,
-          target.pairId === null ? [target.id] : [target.id, target.pairId],
-        );
+        const ids = target.pairId === null ? [target.id] : [target.id, target.pairId];
+        const undo = await snapshotForDelete(tx, ids);
+        // A deleted or rejected import never comes back from the bank, as in YNAB.
+        await rejectImports(tx, ids);
         await tx.delete(transactions).where(eq(transactions.id, target.id));
         return { undo };
       });
@@ -780,6 +843,97 @@ export function registerTransactionRoutes(app: FastifyInstance, db: Db) {
       }
       await db.transaction((tx) => restoreSnapshot(tx, request.body.snapshot));
       return { restored: request.body.snapshot.transactions.map((row) => row.id) };
+    },
+  );
+
+  /** Approves transactions needing review, with their transfer pairs. */
+  app.post<{ Body: { ids: number[] } }>(
+    '/api/transactions/approve',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['ids'],
+          properties: { ids: { type: 'array', minItems: 1, maxItems: 1000, items: categoryId } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const { ids } = request.body;
+      await db
+        .update(transactions)
+        .set({ approved: true })
+        .where(or(inArray(transactions.id, ids), inArray(transactions.transferTransactionId, ids)));
+      return reply.code(204).send();
+    },
+  );
+
+  /** Approve all: every transaction in an account that needs review. */
+  app.post<{ Params: IdParams }>(
+    '/api/accounts/:id/approve-all',
+    { schema: { params: idParams } },
+    async (request) => {
+      return db.transaction(async (tx) => {
+        const approved = await tx
+          .update(transactions)
+          .set({ approved: true })
+          .where(
+            and(eq(transactions.accountId, request.params.id), eq(transactions.approved, false)),
+          )
+          .returning({ id: transactions.id, pairId: transactions.transferTransactionId });
+        const pairIds = approved.flatMap((row) => (row.pairId === null ? [] : [row.pairId]));
+        if (pairIds.length > 0) {
+          await tx
+            .update(transactions)
+            .set({ approved: true })
+            .where(inArray(transactions.id, pairIds));
+        }
+        return { approved: approved.length };
+      });
+    },
+  );
+
+  /**
+   * Splits an import from the transaction it matched: yours goes back to its cleared status
+   * before, and the import arrives as a new transaction needing review.
+   */
+  app.post<{ Params: IdParams }>(
+    '/api/transactions/:id/unmatch',
+    { schema: { params: idParams } },
+    async (request, reply) => {
+      await db.transaction(async (tx) => {
+        const [match] = await tx
+          .select({
+            bankId: bankTransactions.id,
+            matchedCleared: bankTransactions.matchedCleared,
+            cleared: transactions.cleared,
+          })
+          .from(bankTransactions)
+          .innerJoin(transactions, eq(transactions.id, bankTransactions.transactionId))
+          .where(
+            and(
+              eq(bankTransactions.transactionId, request.params.id),
+              isNotNull(bankTransactions.matchedCleared),
+            ),
+          );
+        if (!match) throw new HttpError(404, 'This transaction isn’t matched with an import.');
+        if (match.cleared === 'reconciled') {
+          throw new HttpError(409, 'A reconciled transaction can’t be unmatched.');
+        }
+
+        await tx
+          .update(transactions)
+          .set({ cleared: match.matchedCleared! })
+          .where(eq(transactions.id, request.params.id));
+        const released = await tx
+          .update(bankTransactions)
+          .set({ state: 'waiting', transactionId: null, matchedCleared: null, noMatch: true })
+          .where(eq(bankTransactions.id, match.bankId))
+          .returning({ bankAccountId: bankTransactions.bankAccountId, id: bankTransactions.id });
+        await reimport(tx, released, today());
+      });
+      return reply.code(204).send();
     },
   );
 }

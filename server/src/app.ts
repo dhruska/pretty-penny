@@ -62,7 +62,7 @@ export function buildApp(db: Db, options: AppOptions = {}) {
   });
 
   registerAccountRoutes(app, db);
-  registerTransactionRoutes(app, db);
+  registerTransactionRoutes(app, db, options.today);
   registerCategoryRoutes(app, db);
   registerBudgetRoutes(app, db);
   registerPayeeRoutes(app, db);

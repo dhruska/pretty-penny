@@ -293,6 +293,9 @@ describe('linking accounts', () => {
     const [account] = await get<{ bank: object | null }[]>('/api/accounts');
     expect(account!.bank).toEqual({
       bankAccountId: checking.id,
+      connectionId: connection.id,
+      // Only a starting balance, so importing starts today.
+      importFrom: TODAY,
       institutionName: 'Northwind Bank',
       mask: '1234',
       balanceCents: 245000,
@@ -300,10 +303,6 @@ describe('linking accounts', () => {
       problem: null,
       updatedAt: expect.any(String),
     });
-
-    // Importing starts where you choose when linking an existing account, in Milestone 16.
-    const [saved] = await db.select().from(bankAccounts).where(eq(bankAccounts.id, checking.id));
-    expect(saved!.importFrom).toBeNull();
   });
 
   it('links each account to one bank account at most, and only open accounts', async () => {
@@ -480,20 +479,23 @@ describe('keeping connections up to date', () => {
     await connect();
     await connect();
     const config = bankConfig(settings);
-    expect(await refreshAllConnections(db, config)).toEqual({ refreshed: 2, failed: [] });
+    expect(await refreshAllConnections(db, config, TODAY)).toEqual({ refreshed: 2, failed: [] });
 
     const [first] = await db.select().from(bankConnections).orderBy(bankConnections.id);
     await db
       .update(bankConnections)
       .set({ accessTokenEncrypted: 'v1.damaged' })
       .where(eq(bankConnections.id, first!.id));
-    const result = await refreshAllConnections(db, config);
+    const result = await refreshAllConnections(db, config, TODAY);
     expect(result.refreshed).toBe(1);
     expect(result.failed).toEqual([
       { connectionId: first!.id, message: expect.stringContaining('BANK_TOKEN_KEY') },
     ]);
 
-    expect(await refreshAllConnections(db, bankConfig({}))).toEqual({ refreshed: 0, failed: [] });
+    expect(await refreshAllConnections(db, bankConfig({}), TODAY)).toEqual({
+      refreshed: 0,
+      failed: [],
+    });
   });
 
   it('refuses to refresh a connection that doesn’t exist', async () => {

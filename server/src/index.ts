@@ -54,7 +54,7 @@ async function postScheduled() {
 /** Fetches each bank connection's balances, and notices connections that need fixing. */
 async function refreshBanks() {
   try {
-    const result = await refreshAllConnections(db, bank);
+    const result = await refreshAllConnections(db, bank, localToday());
     for (const failure of result.failed) {
       app.log.warn(`Bank connection ${failure.connectionId} not updated: ${failure.message}`);
     }

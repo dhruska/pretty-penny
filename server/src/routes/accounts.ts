@@ -109,7 +109,14 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db) {
           sum(${transactions.amountCents}) filter (where ${transactions.cleared} <> 'uncleared'),
           0
         )`.mapWith(Number),
+        // Transactions from the bank still needing review, as YNAB counts them.
+        unapprovedCount:
+          sql<number>`count(${transactions.id}) filter (where ${transactions.approved} = false)`.mapWith(
+            Number,
+          ),
         bankAccountId: bankAccounts.id,
+        bankConnectionId: bankAccounts.connectionId,
+        bankImportFrom: bankAccounts.importFrom,
         bankMask: bankAccounts.mask,
         bankBalanceCents: bankAccounts.balanceCents,
         bankInstitutionName: bankConnections.institutionName,
@@ -134,6 +141,8 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db) {
         bankStatus,
         bankProblem,
         bankUpdatedAt,
+        bankConnectionId,
+        bankImportFrom,
         ...account
       }) => ({
         ...account,
@@ -142,6 +151,8 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db) {
             ? null
             : {
                 bankAccountId,
+                connectionId: bankConnectionId!,
+                importFrom: bankImportFrom,
                 institutionName: bankInstitutionName!,
                 mask: bankMask,
                 balanceCents: bankBalanceCents,

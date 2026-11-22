@@ -54,6 +54,8 @@ export const transactions = pgTable(
     // Negative for outflows. Limits in routes/schemas.ts keep this within JavaScript's safe range.
     amountCents: bigint('amount_cents', { mode: 'number' }).notNull(),
     isStartingBalance: boolean('is_starting_balance').notNull().default(false),
+    // False for transactions imported from a bank that still need review, as in YNAB.
+    approved: boolean().notNull().default(true),
     // The schedule this transaction was posted from, if any.
     scheduledTransactionId: integer('scheduled_transaction_id').references(
       (): AnyPgColumn => scheduledTransactions.id,
@@ -172,6 +174,11 @@ export const bankConnections = pgTable('bank_connections', {
   problem: text(),
   // When balances were last fetched from Plaid.
   updatedAt: timestamp('updated_at', { withTimezone: true }),
+  // Where the last transactions sync got to; null reads the whole history again.
+  syncCursor: text('sync_cursor'),
+  // Plaid's transactions_update_status from the last sync, such as NOT_READY while it gathers
+  // history right after connecting.
+  syncStatus: text('sync_status'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -196,6 +203,44 @@ export const bankAccounts = pgTable('bank_accounts', {
   // starting balance, which already includes that day's transactions.
   importFrom: date('import_from', { mode: 'string' }),
 });
+
+/**
+ * Pretty Penny's copy of what Plaid sent for linked accounts' transactions, and what each became.
+ * States: 'pending' (shown, not imported), 'waiting' (not imported yet, such as before the
+ * account's start date), 'imported', 'rejected' (deleted; never imported again) and 'skipped'
+ * (zero amounts, such as card checks).
+ */
+export const bankTransactions = pgTable(
+  'bank_transactions',
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    bankAccountId: integer('bank_account_id')
+      .notNull()
+      .references(() => bankAccounts.id, { onDelete: 'cascade' }),
+    plaidTransactionId: text('plaid_transaction_id').notNull().unique(),
+    // The purchase date when the bank gives one, otherwise the posted date.
+    date: date({ mode: 'string' }).notNull(),
+    // Pretty Penny's sign: negative for money out.
+    amountCents: bigint('amount_cents', { mode: 'number' }).notNull(),
+    // The bank's own text, kept for payee renaming rules.
+    name: text().notNull(),
+    merchantName: text('merchant_name'),
+    pending: boolean().notNull().default(false),
+    state: text().notNull(),
+    transactionId: integer('transaction_id').references(() => transactions.id, {
+      onDelete: 'set null',
+    }),
+    // For an import matched with a transaction you entered: its cleared status before, which
+    // unmatching puts back. Null when the import created the transaction.
+    matchedCleared: text('matched_cleared'),
+    // Set by unmatching, so importing again doesn't match it straight back.
+    noMatch: boolean('no_match').notNull().default(false),
+  },
+  (table) => [
+    index('bank_transactions_account_state_idx').on(table.bankAccountId, table.state),
+    index('bank_transactions_transaction_idx').on(table.transactionId),
+  ],
+);
 
 /** App-wide settings, such as the password hash. */
 export const settings = pgTable('settings', {

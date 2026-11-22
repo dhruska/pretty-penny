@@ -5,10 +5,12 @@ import { HttpError } from '../routes/schemas.js';
 import type { FetchFn } from '../ynab/client.js';
 import { decryptToken, parseBankKey } from './crypto.js';
 import { balanceCents, connectionProblem, guessAccountType, plaidErrorMessage } from './mapping.js';
+import { applySync, type SyncChanges } from './importer.js';
 import {
   createPlaidClient,
   PLAID_ENVIRONMENTS,
   PlaidError,
+  SYNC_RESTART_CODE,
   type PlaidAccount,
   type PlaidClient,
   type PlaidEnvironment,
@@ -129,8 +131,119 @@ export async function refreshConnection(db: Db, config: BankConfig, connection: 
   }
 }
 
-/** Refreshes every connection, as the hourly job does. One failing doesn't stop the others. */
-export async function refreshAllConnections(db: Db, config: BankConfig) {
+/** How many times a sync starts over when Plaid reports changes while it pages. */
+const SYNC_ATTEMPTS = 3;
+
+/**
+ * Fetches a connection's transaction changes since its cursor, every page, then applies them
+ * with the new cursor in one database transaction, so a failure partway changes nothing. A
+ * problem with the connection is saved, as when refreshing.
+ */
+export async function syncConnection(
+  db: Db,
+  config: BankConfig,
+  connection: Connection,
+  today: string,
+) {
+  const { plaid, key } = requireBank(config);
+  const accessToken = decryptToken(key, connection.accessTokenEncrypted);
+  const startCursor = connection.syncCursor;
+
+  let changes: SyncChanges | null = null;
+  let cursor = startCursor;
+  let status: string | null = null;
+  try {
+    for (let attempt = 1; changes === null; attempt += 1) {
+      const gathered: SyncChanges = {
+        added: [],
+        modified: [],
+        removed: [],
+        fullRead: startCursor === null,
+      };
+      cursor = startCursor;
+      try {
+        let hasMore = true;
+        while (hasMore) {
+          const page = await plaid.syncTransactions(accessToken, cursor);
+          gathered.added.push(...page.added);
+          gathered.modified.push(...page.modified);
+          gathered.removed.push(...page.removed.map((removed) => removed.transaction_id));
+          cursor = page.next_cursor;
+          status = page.transactions_update_status ?? null;
+          hasMore = page.has_more;
+        }
+        changes = gathered;
+      } catch (error) {
+        const restart =
+          error instanceof PlaidError &&
+          error.errorCode === SYNC_RESTART_CODE &&
+          attempt < SYNC_ATTEMPTS;
+        if (!restart) throw error;
+      }
+    }
+  } catch (error) {
+    const problem =
+      error instanceof PlaidError ? connectionProblem(error, connection.institutionName) : null;
+    if (!problem) throw toHttpError(error);
+    await db.update(bankConnections).set(problem).where(eq(bankConnections.id, connection.id));
+    return;
+  }
+
+  await db.transaction(async (tx) => {
+    // Linking an account meanwhile resets the cursor, to read the history again; this sync's
+    // cursor is then left for the next one.
+    const [current] = await tx
+      .select({ syncCursor: bankConnections.syncCursor })
+      .from(bankConnections)
+      .where(eq(bankConnections.id, connection.id))
+      .for('update');
+    if (!current) return;
+    await applySync(tx, connection.id, changes!, today);
+    await tx
+      .update(bankConnections)
+      .set({
+        ...(current.syncCursor === startCursor && { syncCursor: cursor }),
+        syncStatus: status,
+      })
+      .where(eq(bankConnections.id, connection.id));
+  });
+}
+
+/** Syncs still running, by connection, so a second request waits for the first. */
+const running = new Map<number, Promise<void>>();
+
+/**
+ * Brings a connection up to date: balances, then transactions, one update per connection at a
+ * time. A connection with a problem, such as needing to sign in again, skips the transactions.
+ */
+export async function updateConnection(
+  db: Db,
+  config: BankConfig,
+  connectionId: number,
+  today: string,
+) {
+  const previous = running.get(connectionId) ?? Promise.resolve();
+  const next = previous
+    .catch(() => {})
+    .then(async () => {
+      const load = async () =>
+        (await db.select().from(bankConnections).where(eq(bankConnections.id, connectionId)))[0];
+      const connection = await load();
+      if (!connection) return;
+      await refreshConnection(db, config, connection);
+      const refreshed = await load();
+      if (refreshed?.status === 'ok') await syncConnection(db, config, refreshed, today);
+    });
+  running.set(connectionId, next);
+  try {
+    await next;
+  } finally {
+    if (running.get(connectionId) === next) running.delete(connectionId);
+  }
+}
+
+/** Updates every connection, as the hourly job does. One failing doesn't stop the others. */
+export async function refreshAllConnections(db: Db, config: BankConfig, today: string) {
   const failed: { connectionId: number; message: string }[] = [];
   if (!config.plaid || !config.key) return { refreshed: 0, failed };
 
@@ -138,7 +251,7 @@ export async function refreshAllConnections(db: Db, config: BankConfig) {
   let refreshed = 0;
   for (const connection of connections) {
     try {
-      await refreshConnection(db, config, connection);
+      await updateConnection(db, config, connection.id, today);
       refreshed += 1;
     } catch (error) {
       failed.push({
@@ -166,6 +279,8 @@ export async function listConnections(db: Executor) {
       status: bankConnections.status,
       problem: bankConnections.problem,
       updatedAt: bankConnections.updatedAt,
+      // Right after connecting, Plaid takes a few minutes to gather history.
+      gettingTransactions: sql<boolean>`${bankConnections.syncStatus} = 'NOT_READY'`,
     })
     .from(bankConnections)
     .orderBy(asc(bankConnections.createdAt), asc(bankConnections.id));
@@ -180,6 +295,7 @@ export async function listConnections(db: Executor) {
       plaidSubtype: bankAccounts.plaidSubtype,
       balanceCents: bankAccounts.balanceCents,
       accountId: bankAccounts.accountId,
+      importFrom: bankAccounts.importFrom,
       accountName: sql<
         string | null
       >`(select name from accounts where id = ${bankAccounts.accountId})`,

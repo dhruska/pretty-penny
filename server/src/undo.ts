@@ -1,8 +1,9 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Executor } from './db/client.js';
 import {
   accounts,
+  bankTransactions,
   categories,
   payees,
   scheduledTransactions,
@@ -11,10 +12,21 @@ import {
 } from './db/schema.js';
 import { HttpError } from './routes/schemas.js';
 
-/** Everything a delete removed: a transaction, its transfer pair if any, and their lines. */
+/** A bank transaction a deleted transaction came from or matched, to link again on undo. */
+export interface BankLink {
+  id: number;
+  transactionId: number;
+  matchedCleared: string | null;
+}
+
+/**
+ * Everything a delete removed: a transaction, its transfer pair if any, their lines, and the
+ * bank transactions they came from, which the delete marked rejected.
+ */
 export interface DeletedSnapshot {
   transactions: (Omit<typeof transactions.$inferSelect, 'createdAt'> & { createdAt: string })[];
   lines: (typeof transactionLines.$inferSelect)[];
+  bankLinks?: BankLink[];
 }
 
 export interface SignedSnapshot {
@@ -39,9 +51,19 @@ export async function snapshotForDelete(tx: Executor, ids: number[]): Promise<Si
     .from(transactionLines)
     .where(inArray(transactionLines.transactionId, ids))
     .orderBy(transactionLines.id);
+  const bankLinks = await tx
+    .select({
+      id: bankTransactions.id,
+      transactionId: sql<number>`${bankTransactions.transactionId}`,
+      matchedCleared: bankTransactions.matchedCleared,
+    })
+    .from(bankTransactions)
+    .where(inArray(bankTransactions.transactionId, ids))
+    .orderBy(bankTransactions.id);
   const snapshot: DeletedSnapshot = {
     transactions: rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() })),
     lines,
+    bankLinks,
   };
   return { snapshot, signature: sign(snapshot) };
 }
@@ -118,11 +140,12 @@ export async function restoreSnapshot(tx: Executor, snapshot: DeletedSnapshot) {
   for (const row of snapshot.transactions) {
     await tx.execute(sql`insert into transactions
       (id, account_id, date, payee_id, cleared, memo, flag, amount_cents, is_starting_balance,
-       scheduled_transaction_id, created_at)
+       approved, scheduled_transaction_id, created_at)
       overriding system value values (
         ${row.id}, ${row.accountId}, ${row.date},
         ${row.payeeId !== null && livePayees.has(row.payeeId) ? row.payeeId : null},
         ${row.cleared}, ${row.memo}, ${row.flag}, ${row.amountCents}, ${row.isStartingBalance},
+        ${row.approved ?? true},
         ${row.scheduledTransactionId !== null && liveSchedules.has(row.scheduledTransactionId) ? row.scheduledTransactionId : null},
         ${row.createdAt}
       )`);
@@ -136,5 +159,16 @@ export async function restoreSnapshot(tx: Executor, snapshot: DeletedSnapshot) {
   for (const line of snapshot.lines) {
     await tx.execute(sql`insert into transaction_lines (id, transaction_id, category_id, amount_cents, memo)
       overriding system value values (${line.id}, ${line.transactionId}, ${line.categoryId}, ${line.amountCents}, ${line.memo})`);
+  }
+  // Imports the delete rejected become imported again, unless the bank has dropped them since.
+  for (const link of snapshot.bankLinks ?? []) {
+    await tx
+      .update(bankTransactions)
+      .set({
+        state: 'imported',
+        transactionId: link.transactionId,
+        matchedCleared: link.matchedCleared,
+      })
+      .where(and(eq(bankTransactions.id, link.id), eq(bankTransactions.state, 'rejected')));
   }
 }

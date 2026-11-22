@@ -28,6 +28,36 @@ export interface PlaidAccount {
   balances: { current: number | null; iso_currency_code: string | null };
 }
 
+/** The fields of Plaid's transaction objects that Pretty Penny uses. */
+export interface PlaidTransaction {
+  transaction_id: string;
+  account_id: string;
+  /** Positive for money out, as Plaid reports it for every kind of account. */
+  amount: number;
+  /** When the bank posted it. */
+  date: string;
+  /** When the purchase was made, if the bank says. */
+  authorized_date: string | null;
+  /** The bank's own description. */
+  name: string;
+  /** Plaid's cleaned-up merchant name, when it recognizes one. */
+  merchant_name: string | null;
+  pending: boolean;
+}
+
+/** One page of changes from /transactions/sync. */
+export interface SyncPage {
+  added: PlaidTransaction[];
+  modified: PlaidTransaction[];
+  removed: { transaction_id: string }[];
+  next_cursor: string;
+  has_more: boolean;
+  transactions_update_status?: string;
+}
+
+/** Plaid's error when transactions changed while a sync was paging; the sync starts over. */
+export const SYNC_RESTART_CODE = 'TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION';
+
 /** An error response from Plaid. Its messages never include tokens or the secret. */
 export class PlaidError extends Error {
   constructor(
@@ -123,6 +153,27 @@ export function createPlaidClient(settings: PlaidSettings, fetchFn: FetchFn = fe
         throw new HttpError(502, 'Plaid sent a response Pretty Penny doesn’t understand.');
       }
       return result.accounts;
+    },
+
+    /**
+     * Transactions added, changed and removed since the cursor, a page at a time. Without a
+     * cursor, everything Plaid has.
+     */
+    async syncTransactions(accessToken: string, cursor: string | null): Promise<SyncPage> {
+      const page = await post<SyncPage>('/transactions/sync', {
+        access_token: accessToken,
+        ...(cursor && { cursor }),
+        count: 500,
+      });
+      if (
+        !Array.isArray(page.added) ||
+        !Array.isArray(page.modified) ||
+        !Array.isArray(page.removed) ||
+        typeof page.next_cursor !== 'string'
+      ) {
+        throw new HttpError(502, 'Plaid sent a response Pretty Penny doesn’t understand.');
+      }
+      return page;
     },
 
     /** Ends Plaid's access to the bank. On the Trial plan the login slot isn't given back. */

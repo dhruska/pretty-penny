@@ -1,4 +1,4 @@
-import { and, eq, ne } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { AccountType } from '../account-types.js';
 import { decryptToken, encryptToken } from '../bank/crypto.js';
@@ -7,20 +7,44 @@ import {
   type BankConfig,
   listConnections,
   nextDay,
-  refreshConnection,
   requireBank,
   saveBankAccounts,
   toHttpError,
+  updateConnection,
 } from '../bank/service.js';
-import type { Db } from '../db/client.js';
-import { accounts, bankAccounts, bankConnections } from '../db/schema.js';
+import { importWaiting, suggestedImportFrom } from '../bank/importer.js';
+import { importPayee } from '../bank/matching.js';
+import type { Db, Executor } from '../db/client.js';
+import { accounts, bankAccounts, bankConnections, bankTransactions } from '../db/schema.js';
 import { insertAccount } from './accounts.js';
-import { accountName, accountType, HttpError, idParams, type IdParams } from './schemas.js';
+import { accountName, accountType, date, HttpError, idParams, type IdParams } from './schemas.js';
 
 const MAX_ID = 2_147_483_647;
 
 /** Plaid errors meaning it has already forgotten the connection, so removing it can go ahead. */
 const ALREADY_REMOVED = new Set(['ITEM_NOT_FOUND', 'INVALID_ACCESS_TOKEN']);
+
+/**
+ * After linking, the bank account's earlier imports whose transactions were deleted along with
+ * an account can import again, and the connection's history is read again from Plaid, since
+ * only linked accounts' transactions were kept.
+ */
+async function readHistoryAgain(tx: Executor, bankAccountId: number, connectionId: number) {
+  await tx
+    .update(bankTransactions)
+    .set({ state: 'waiting', matchedCleared: null })
+    .where(
+      and(
+        eq(bankTransactions.bankAccountId, bankAccountId),
+        eq(bankTransactions.state, 'imported'),
+        isNull(bankTransactions.transactionId),
+      ),
+    );
+  await tx
+    .update(bankConnections)
+    .set({ syncCursor: null })
+    .where(eq(bankConnections.id, connectionId));
+}
 
 export function registerBankRoutes(
   app: FastifyInstance,
@@ -38,6 +62,18 @@ export function registerBankRoutes(
     const [bankAccount] = await db.select().from(bankAccounts).where(eq(bankAccounts.id, id));
     if (!bankAccount) throw new HttpError(404, 'Bank account not found');
     return bankAccount;
+  }
+
+  /**
+   * Imports a newly linked account's transactions right away. A problem is saved on the
+   * connection or logged; the hourly update tries again.
+   */
+  async function syncSoon(connectionId: number) {
+    try {
+      await updateConnection(db, config, connectionId, today());
+    } catch (error) {
+      app.log.warn(error, 'Importing after linking failed');
+    }
   }
 
   async function connectionView(id: number) {
@@ -137,7 +173,8 @@ export function registerBankRoutes(
     '/api/bank/connections/:id/refresh',
     { schema: { params: idParams } },
     async (request) => {
-      await refreshConnection(db, config, await findConnection(request.params.id));
+      await findConnection(request.params.id);
+      await updateConnection(db, config, request.params.id, today());
       return connectionView(request.params.id);
     },
   );
@@ -201,10 +238,32 @@ export function registerBankRoutes(
         }
       }
 
-      await db
-        .update(bankAccounts)
-        .set({ accountId, importFrom: null })
-        .where(eq(bankAccounts.id, bankAccount.id));
+      await db.transaction(async (tx) => {
+        if (accountId === null) {
+          // Only linked accounts' transactions are kept. Ones already imported stay, so linking
+          // again doesn't bring them twice.
+          await tx
+            .delete(bankTransactions)
+            .where(
+              and(
+                eq(bankTransactions.bankAccountId, bankAccount.id),
+                inArray(bankTransactions.state, ['pending', 'waiting', 'skipped']),
+              ),
+            );
+          await tx
+            .update(bankAccounts)
+            .set({ accountId: null, importFrom: null })
+            .where(eq(bankAccounts.id, bankAccount.id));
+          return;
+        }
+        if (bankAccount.accountId === accountId) return;
+        await tx
+          .update(bankAccounts)
+          .set({ accountId, importFrom: await suggestedImportFrom(tx, accountId, today()) })
+          .where(eq(bankAccounts.id, bankAccount.id));
+        await readHistoryAgain(tx, bankAccount.id, bankAccount.connectionId);
+      });
+      if (accountId !== null) await syncSoon(bankAccount.connectionId);
       return connectionView(bankAccount.connectionId);
     },
   );
@@ -243,11 +302,70 @@ export function registerBankRoutes(
           .update(bankAccounts)
           .set({ accountId: created.id, importFrom: nextDay(date) })
           .where(eq(bankAccounts.id, bankAccount.id));
+        await readHistoryAgain(tx, bankAccount.id, bankAccount.connectionId);
         return created;
       });
+      await syncSoon(bankAccount.connectionId);
       return reply
         .code(201)
         .send({ accountId: account.id, ...(await connectionView(bankAccount.connectionId)) });
+    },
+  );
+
+  /** Changes where importing into a linked account starts. Moving it earlier imports more. */
+  app.put<{ Params: IdParams; Body: { importFrom: string } }>(
+    '/api/bank/accounts/:id/import-from',
+    {
+      schema: {
+        params: idParams,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['importFrom'],
+          properties: { importFrom: date },
+        },
+      },
+    },
+    async (request) => {
+      const bankAccount = await findBankAccount(request.params.id);
+      if (bankAccount.accountId === null) {
+        throw new HttpError(409, 'Link this bank account before choosing where importing starts.');
+      }
+      await db.transaction(async (tx) => {
+        const [updated] = await tx
+          .update(bankAccounts)
+          .set({ importFrom: request.body.importFrom })
+          .where(eq(bankAccounts.id, bankAccount.id))
+          .returning();
+        await importWaiting(tx, updated!, today());
+      });
+      return connectionView(bankAccount.connectionId);
+    },
+  );
+
+  /** An account's pending bank transactions, newest first. They don't affect any balance. */
+  app.get<{ Params: IdParams }>(
+    '/api/accounts/:id/pending',
+    { schema: { params: idParams } },
+    async (request) => {
+      const rows = await db
+        .select({
+          id: bankTransactions.id,
+          date: bankTransactions.date,
+          name: bankTransactions.name,
+          merchantName: bankTransactions.merchantName,
+          amountCents: bankTransactions.amountCents,
+        })
+        .from(bankTransactions)
+        .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
+        .where(
+          and(eq(bankAccounts.accountId, request.params.id), eq(bankTransactions.state, 'pending')),
+        )
+        .orderBy(desc(bankTransactions.date), desc(bankTransactions.id));
+      return rows.map(({ name, merchantName, ...row }) => ({
+        ...row,
+        payee: importPayee({ name, merchantName }),
+      }));
     },
   );
 }
