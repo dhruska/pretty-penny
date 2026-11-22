@@ -9,17 +9,21 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useIsPhone } from '@/lib/useIsPhone';
-import { Plus, Search, TriangleAlert } from 'lucide-react';
+import { Plus, RefreshCw, Search, TriangleAlert } from 'lucide-react';
+import { cn } from 'cn';
+import { PendingTransactions } from '@/components/PendingTransactions';
+import { ReviewBanner } from '@/components/ReviewBanner';
 import { bankDifference, updatedAgo } from '@/lib/bank';
 import { accountTypeLabel } from '@/lib/accountTypes';
 import { today } from '@/lib/dates';
-import { notify } from '@/lib/notify';
+import { notify, notifyError } from '@/lib/notify';
 import { refresh, registerQuery } from '@/lib/queries';
 import { useShortcuts } from '@/lib/shortcuts';
 import { SkeletonRows } from '@/components/ui/skeleton';
 import {
   keepPreviousData,
   useInfiniteQuery,
+  useMutation,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
@@ -29,6 +33,15 @@ import { Link, useParams } from 'react-router';
 /** What the linked bank last said, and how it compares with the cleared balance. */
 function BankBalance({ account, bank }: { account: Account; bank: AccountBank }) {
   const difference = bankDifference(account);
+  const queryClient = useQueryClient();
+  const importNow = useMutation({
+    mutationFn: () => api.refreshBankConnection(bank.connectionId),
+    onSuccess: (connection) => {
+      if (connection.status === 'ok') notify(`Up to date with ${bank.institutionName}`);
+    },
+    onError: notifyError,
+    onSettled: () => refresh(queryClient, 'imports'),
+  });
   return (
     <section aria-label="Bank" className="mt-2 space-y-1 text-sm">
       <p className="flex flex-wrap items-baseline gap-x-2 text-muted-foreground">
@@ -42,6 +55,23 @@ function BankBalance({ account, bank }: { account: Account; bank: AccountBank })
           )}
         </span>
         <span className="text-xs">{updatedAgo(bank.updatedAt)}</span>
+        {!account.closed && (
+          <button
+            type="button"
+            disabled={importNow.isPending}
+            onClick={() => importNow.mutate()}
+            className="inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-accent-ink hover:underline disabled:opacity-60"
+          >
+            <RefreshCw
+              aria-hidden="true"
+              className={cn(
+                'size-3',
+                importNow.isPending && 'animate-spin motion-reduce:animate-none',
+              )}
+            />
+            Import now
+          </button>
+        )}
       </p>
       {difference !== null && bank.status === 'ok' && (
         <p className="text-xs text-warning">
@@ -82,6 +112,9 @@ function AccountDetails({ account }: { account: Account }) {
   const [filter, setFilter] = useState('');
   const isPhone = useIsPhone();
   const [isAdding, setIsAdding] = useState(false);
+  // Showing only the transactions from the bank that need review.
+  const [reviewing, setReviewing] = useState(false);
+  const isReviewing = reviewing && account.unapprovedCount > 0;
 
   // The newest transactions first, with more loading as you scroll.
   const transactions = useInfiniteQuery(registerQuery(account.id));
@@ -90,10 +123,16 @@ function AccountDetails({ account }: { account: Account }) {
   // Filtering searches the whole account on the server, so older transactions are found too.
   const query = useDeferredValue(filter.trim());
   const filtered = useQuery({
-    queryKey: ['search', 'account', account.id, query],
+    queryKey: ['search', 'account', account.id, query, isReviewing],
     queryFn: () =>
-      api.searchTransactions(new URLSearchParams({ accountId: String(account.id), q: query })),
-    enabled: query !== '',
+      api.searchTransactions(
+        new URLSearchParams({
+          accountId: String(account.id),
+          q: query,
+          ...(isReviewing && { needsReview: 'true' }),
+        }),
+      ),
+    enabled: query !== '' || isReviewing,
     placeholderData: keepPreviousData,
   });
 
@@ -226,6 +265,8 @@ function AccountDetails({ account }: { account: Account }) {
         )
       )}
 
+      <ReviewBanner account={account} reviewing={isReviewing} onReview={setReviewing} />
+      <PendingTransactions accountId={account.id} />
       <ScheduledList account={account} />
 
       {transactions.isPending && <SkeletonRows rows={8} label="Loading transactions" />}
@@ -246,7 +287,7 @@ function AccountDetails({ account }: { account: Account }) {
               onChange={(event) => setFilter(event.target.value)}
             />
           </div>
-          {query === '' ? (
+          {query === '' && !isReviewing ? (
             <TransactionRegister
               transactions={rows}
               hasMore={transactions.hasNextPage}
@@ -260,7 +301,13 @@ function AccountDetails({ account }: { account: Account }) {
             <TransactionRegister
               transactions={filtered.data?.transactions ?? []}
               showBalance={false}
-              emptyMessage={filtered.isPending ? 'Searching…' : 'No transactions match.'}
+              emptyMessage={
+                filtered.isPending
+                  ? 'Searching…'
+                  : isReviewing
+                    ? 'Nothing left to review.'
+                    : 'No transactions match.'
+              }
             />
           )}
         </div>

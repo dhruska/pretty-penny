@@ -9,6 +9,8 @@ export interface Account {
   balanceCents: number;
   clearedBalanceCents: number;
   lastReconciledAt: string | null;
+  /** Transactions from the bank still needing review. */
+  unapprovedCount: number;
   /** The bank account it's linked to through Plaid, if any. */
   bank: AccountBank | null;
 }
@@ -18,6 +20,9 @@ export type ConnectionStatus = 'ok' | 'needs_sign_in' | 'error';
 
 export interface AccountBank {
   bankAccountId: number;
+  connectionId: number;
+  /** Where importing starts, as YYYY-MM-DD. */
+  importFrom: string | null;
   institutionName: string;
   mask: string | null;
   /** Negative when money is owed. Null when the bank doesn't say. */
@@ -43,6 +48,8 @@ export interface BankAccount {
   balanceCents: number | null;
   accountId: number | null;
   accountName: string | null;
+  /** Where importing starts, as YYYY-MM-DD, once linked. */
+  importFrom: string | null;
   /** What a new account for it starts as. */
   suggestedType: string;
 }
@@ -53,7 +60,17 @@ export interface BankConnection {
   status: ConnectionStatus;
   problem: string | null;
   updatedAt: string | null;
+  /** Right after connecting, while Plaid gathers history. */
+  gettingTransactions: boolean;
   accounts: BankAccount[];
+}
+
+/** A bank transaction that hasn't posted yet; it doesn't affect any balance. */
+export interface PendingTransaction {
+  id: number;
+  date: string;
+  payee: string;
+  amountCents: number;
 }
 
 /** Reconciled transactions are locked; only reconciling an account sets that status. */
@@ -101,6 +118,10 @@ export interface Transaction {
   transferAccountName: string | null;
   /** One line normally, or several for a split. */
   lines: TransactionLine[];
+  /** False for a transaction from the bank that still needs review. */
+  approved: boolean;
+  /** The bank transaction it came from or matched, with the bank's own text. */
+  bank: { name: string; matched: boolean; institutionName: string } | null;
   /** Only in a single account's register. */
   runningBalanceCents?: number;
 }
@@ -480,6 +501,14 @@ export const api = {
   moveCategory: (id: number, direction: MoveDirection) =>
     request<void>(`/categories/${id}/move`, 'POST', { direction }),
   deleteCategory: (id: number) => request<void>(`/categories/${id}`, 'DELETE'),
+  approveTransactions: (ids: number[]) => request<void>('/transactions/approve', 'POST', { ids }),
+  approveAll: (accountId: number) =>
+    request<{ approved: number }>(`/accounts/${accountId}/approve-all`, 'POST'),
+  unmatchTransaction: (id: number) => request<void>(`/transactions/${id}/unmatch`, 'POST'),
+  listPending: (accountId: number) =>
+    request<PendingTransaction[]>(`/accounts/${accountId}/pending`),
+  setImportFrom: (bankAccountId: number, importFrom: string) =>
+    request<BankConnection>(`/bank/accounts/${bankAccountId}/import-from`, 'PUT', { importFrom }),
   bankStatus: () => request<BankStatus>('/bank/status'),
   listBankConnections: () => request<BankConnection[]>('/bank/connections'),
   /** With a connection, Plaid's sign-in window opens to fix it. */

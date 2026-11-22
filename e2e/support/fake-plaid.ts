@@ -1,5 +1,9 @@
 import { createServer } from 'node:http';
-import { createFakePlaid, LOGIN_REQUIRED } from '../../server/src/bank/fake-plaid';
+import {
+  createFakePlaid,
+  LOGIN_REQUIRED,
+  type FakeTransactionInput,
+} from '../../server/src/bank/fake-plaid';
 
 /**
  * A stand-in for Plaid's API during browser tests, with a made-up bank. Tests control it
@@ -26,6 +30,12 @@ const server = createServer((request, response) => {
         return send(200, { ok: true });
       case '/fake/login-required':
         plaid.setItemError(body.on ? LOGIN_REQUIRED : null);
+        return send(200, { ok: true });
+      case '/fake/add-transaction':
+        plaid.addTransaction(body as unknown as FakeTransactionInput);
+        return send(200, { ok: true });
+      case '/fake/remove-transaction':
+        plaid.removeTransaction(String(body.id));
         return send(200, { ok: true });
       default: {
         const answer = plaid.handle(request.url ?? '', body);

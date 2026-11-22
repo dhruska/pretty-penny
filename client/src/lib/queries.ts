@@ -23,6 +23,7 @@ export const AFFECTS = {
   /** Adding, editing or deleting a transaction, or entering a scheduled one. */
   transactions: [
     ['transactions'],
+    ['pending'],
     ['accounts'],
     ['budget'],
     ['search'],
@@ -47,6 +48,18 @@ export const AFFECTS = {
   ],
   /** Connecting, fixing or removing a bank, or linking its accounts. */
   bank: [['bank-connections'], ['accounts']],
+  /** Importing from a bank, or approving, rejecting or unmatching what it imported. */
+  imports: [
+    ['bank-connections'],
+    ['transactions'],
+    ['pending'],
+    ['accounts'],
+    ['budget'],
+    ['search'],
+    ['scheduled'],
+    ['payees'],
+    ['report'],
+  ],
   /** Changing a schedule without posting it. */
   schedules: [['scheduled'], ['budget']],
   flags: [['flags']],

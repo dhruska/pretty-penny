@@ -9,6 +9,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from 'cn';
 import { useId, useState, type FormEvent } from 'react';
 import { AccountTypeSelect } from './AccountTypeSelect';
+import { ImportFrom } from './ImportFrom';
 import { SELECT_CLASS } from './CategorySelect';
 import { Money } from './Money';
 
@@ -107,6 +108,10 @@ export function BankAccountRow({
           </select>
         </div>
       </div>
+
+      {bankAccount.accountId !== null && !creating && (
+        <ImportFrom bankAccountId={bankAccount.id} importFrom={bankAccount.importFrom} />
+      )}
 
       {creating && (
         <form

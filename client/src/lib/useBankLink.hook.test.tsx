@@ -15,6 +15,7 @@ const connection = (changes: Partial<BankConnection> = {}): BankConnection => ({
   status: 'ok',
   problem: null,
   updatedAt: null,
+  gettingTransactions: false,
   accounts: [],
   ...changes,
 });

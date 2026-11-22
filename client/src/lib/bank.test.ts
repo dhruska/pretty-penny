@@ -4,6 +4,8 @@ import { bankAccountLabel, bankDifference, linkableAccounts, updatedAgo } from '
 
 const bank = (changes: Partial<AccountBank> = {}): AccountBank => ({
   bankAccountId: 1,
+  connectionId: 1,
+  importFrom: null,
   institutionName: 'Northwind Bank',
   mask: '1234',
   balanceCents: 10000,
@@ -22,6 +24,7 @@ const account = (id: number, changes: Partial<Account> = {}): Account => ({
   balanceCents: 0,
   clearedBalanceCents: 0,
   lastReconciledAt: null,
+  unapprovedCount: 0,
   bank: null,
   ...changes,
 });

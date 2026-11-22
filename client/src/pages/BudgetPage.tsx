@@ -44,6 +44,25 @@ function UncategorizedNotice({ uncategorized }: { uncategorized: Budget['uncateg
   );
 }
 
+/**
+ * Transactions from the bank waiting for review, linking to them. The sidebar shows each
+ * account's count, but on phones the sidebar is in the menu, so this says it here too.
+ */
+function ReviewNotice() {
+  const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts });
+  const total = (accounts.data ?? []).reduce((sum, account) => sum + account.unapprovedCount, 0);
+  if (total === 0) return null;
+  return (
+    <Link
+      to="/transactions?needsReview=true"
+      className="flex items-center justify-between gap-2 rounded-lg border border-primary/40 bg-accent-soft px-3 py-2 text-sm font-medium text-accent-ink hover:underline"
+    >
+      {total === 1 ? '1 transaction needs review' : `${total} transactions need review`}
+      <ChevronRight aria-hidden="true" className="size-4" />
+    </Link>
+  );
+}
+
 /** A brand-new budget's first steps, or bringing everything over from YNAB. */
 function Welcome({ onManage }: { onManage: () => void }) {
   const steps = [
@@ -218,6 +237,7 @@ export function BudgetPage() {
       {budget.data && <MonthSummary budget={budget.data} />}
 
       {budget.isError && <p className="text-negative">{budget.error.message}</p>}
+      <ReviewNotice />
       {budget.data && <UncategorizedNotice uncategorized={budget.data.uncategorized} />}
       {importStatus.data?.canImport && <Welcome onManage={() => setIsManaging(true)} />}
 

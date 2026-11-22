@@ -53,7 +53,11 @@ function ConnectionCard({
       <header className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <h3 className="truncate font-semibold">{connection.institutionName}</h3>
-          <p className="text-sm text-muted-foreground">{updatedAgo(connection.updatedAt)}</p>
+          <p className="text-sm text-muted-foreground">
+            {connection.gettingTransactions
+              ? `Getting transactions from ${connection.institutionName}…`
+              : updatedAgo(connection.updatedAt)}
+          </p>
         </div>
         <Button
           variant="ghost"

@@ -9,6 +9,7 @@ const connection: BankConnection = {
   status: 'ok',
   problem: null,
   updatedAt: null,
+  gettingTransactions: false,
   accounts: [],
 };
 

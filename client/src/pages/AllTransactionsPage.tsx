@@ -13,7 +13,16 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useDeferredValue, useId, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router';
 
-const FILTER_KEYS = ['q', 'accountId', 'categoryId', 'from', 'to', 'cleared', 'flag'] as const;
+const FILTER_KEYS = [
+  'q',
+  'accountId',
+  'categoryId',
+  'from',
+  'to',
+  'cleared',
+  'flag',
+  'needsReview',
+] as const;
 
 type FilterKey = (typeof FILTER_KEYS)[number];
 type Filters = Partial<Record<FilterKey, string>>;
@@ -102,7 +111,7 @@ export function AllTransactionsPage() {
 
       <section
         aria-label="Filters"
-        className="grid grid-cols-2 gap-2 rounded-lg border bg-card p-3 md:grid-cols-3 lg:grid-cols-6"
+        className="grid grid-cols-2 gap-2 rounded-lg border bg-card p-3 md:grid-cols-4 lg:grid-cols-7"
       >
         <div className="col-span-2 md:col-span-1">
           <Field label="Search" id={`${id}-q`}>
@@ -194,6 +203,17 @@ export function AllTransactionsPage() {
                 {flagLabel(color, flags.data)}
               </option>
             ))}
+          </select>
+        </Field>
+        <Field label="Review" id={`${id}-review`}>
+          <select
+            id={`${id}-review`}
+            className={SELECT_CLASS}
+            value={filters.needsReview ?? ''}
+            onChange={(event) => update({ needsReview: event.target.value })}
+          >
+            <option value="">Any</option>
+            <option value="true">Needs review</option>
           </select>
         </Field>
         {datePreset === 'custom' && (

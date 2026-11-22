@@ -9,6 +9,7 @@ import { cn } from 'cn';
 import { useId, useState } from 'react';
 import { Link } from 'react-router';
 import { SELECT_CLASS } from './CategorySelect';
+import { ImportFrom } from './ImportFrom';
 
 /** Linking an account to a bank account, or unlinking it, from Edit account. */
 export function BankLinkSection({ account }: { account: Account }) {
@@ -48,10 +49,16 @@ export function BankLinkSection({ account }: { account: Account }) {
       <h3 className="text-sm font-semibold">Bank</h3>
       {account.bank ? (
         <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-          <p className="min-w-0">
-            Linked to {account.bank.institutionName}
-            {account.bank.mask && ` ••${account.bank.mask}`}
-          </p>
+          <div className="min-w-0 space-y-1">
+            <p>
+              Linked to {account.bank.institutionName}
+              {account.bank.mask && ` ••${account.bank.mask}`}
+            </p>
+            <ImportFrom
+              bankAccountId={account.bank.bankAccountId}
+              importFrom={account.bank.importFrom}
+            />
+          </div>
           <Button
             variant="ghost"
             size="sm"

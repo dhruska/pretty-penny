@@ -34,7 +34,7 @@ import {
   type QueryClient,
 } from '@tanstack/react-query';
 import { cn } from 'cn';
-import { Check, Lock, Receipt } from 'lucide-react';
+import { Check, Link2, Lock, Receipt } from 'lucide-react';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { ConfirmDelete } from './ConfirmDelete';
 import { EmptyState } from './EmptyState';
@@ -148,6 +148,76 @@ function DeleteButton({
   );
 }
 
+/** Approves a transaction from the bank, on screen right away, as in YNAB. */
+function ApproveButton({ transaction }: { transaction: Transaction }) {
+  const queryClient = useQueryClient();
+  const approve = useMutation({
+    mutationFn: () => api.approveTransactions([transaction.id]),
+    onMutate: () =>
+      updateNow(queryClient, [
+        {
+          queryKey: ['transactions'],
+          update: (data: Pages) => updateInPages(data, transaction.id, { approved: true }),
+        },
+        {
+          queryKey: ['search'],
+          update: (data: SearchResults) =>
+            updateInResults(data, transaction.id, { approved: true }),
+        },
+      ]),
+    onError: (error, _variables, putBack) => {
+      putBack?.();
+      notifyError(error);
+    },
+    onSettled: () => refresh(queryClient, 'imports'),
+  });
+  return (
+    <button
+      type="button"
+      aria-label={`Approve ${payeeLabel(transaction) || 'transaction'}`}
+      title="Approve"
+      onClick={() => approve.mutate()}
+      className="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md border border-primary/60 text-primary hover:bg-primary hover:text-primary-foreground max-md:size-9"
+    >
+      <Check aria-hidden="true" className="size-4" strokeWidth={2.5} />
+    </button>
+  );
+}
+
+/** Splits a matched transaction from its import, which then needs review on its own. */
+function useUnmatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.unmatchTransaction(id),
+    onSuccess: () => notify('Unmatched. The import needs review on its own.'),
+    onError: notifyError,
+    onSettled: () => refresh(queryClient, 'imports'),
+  });
+}
+
+/** Where a transaction came from: the bank and its own text, for a tooltip or details. */
+export function bankSource(transaction: Transaction) {
+  if (!transaction.bank) return null;
+  const { institutionName, name, matched } = transaction.bank;
+  return `${matched ? 'Matched with' : 'From'} ${institutionName}: “${name}”`;
+}
+
+/** A small link icon on transactions matched with an import from the bank. */
+function MatchedIcon({ transaction }: { transaction: Transaction }) {
+  if (!transaction.bank?.matched) return null;
+  const label = bankSource(transaction)!;
+  return (
+    <Link2
+      role="img"
+      aria-label={label}
+      className="ml-1.5 inline size-3.5 shrink-0 align-[-2px] text-muted-foreground"
+      strokeWidth={2}
+    >
+      <title>{label}</title>
+    </Link2>
+  );
+}
+
 /** Loads more as the end of the list comes into view, with a button as a fallback. */
 function LoadMore({ onLoadMore, isLoading }: { onLoadMore: () => void; isLoading: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -248,6 +318,7 @@ export function TransactionRegister({
   const columnCount = 9;
 
   const deleteTransaction = useDeleteTransaction();
+  const unmatch = useUnmatch();
 
   // Resolves the open "Save anyway?" question for a reconciled transaction.
   const [answerConfirm, setAnswerConfirm] = useState<((confirmed: boolean) => void) | null>(null);
@@ -314,6 +385,10 @@ export function TransactionRegister({
             deleteTransaction.mutate(id);
             setEditingId(null);
           }}
+          onUnmatch={(id) => {
+            unmatch.mutate(id);
+            setEditingId(null);
+          }}
         />
       ) : (
         /* `relative` keeps the visually hidden column label inside the scroll area. */
@@ -373,9 +448,18 @@ export function TransactionRegister({
                           return;
                         setEditingId(transaction.id);
                       }}
-                      className="group cursor-pointer border-b last:border-0 hover:bg-muted/40"
+                      className={cn(
+                        'group cursor-pointer border-b last:border-0 hover:bg-muted/40',
+                        // Needing review, as in YNAB: marked until approved.
+                        !transaction.approved && 'bg-accent-soft/40',
+                      )}
                     >
-                      <td className="py-1.5 pr-2 pl-3 whitespace-nowrap tabular-nums">
+                      <td
+                        className={cn(
+                          'py-1.5 pr-2 pl-3 whitespace-nowrap tabular-nums',
+                          !transaction.approved && 'shadow-[inset_3px_0_0_var(--primary)]',
+                        )}
+                      >
                         <span className="flex items-center gap-1.5">
                           <RegisterFlag transaction={transaction} />
                           <time dateTime={transaction.date} className="text-muted-foreground">
@@ -384,7 +468,13 @@ export function TransactionRegister({
                         </span>
                       </td>
                       {showAccount && <td className="px-2 py-1.5">{transaction.accountName}</td>}
-                      <td className="px-2 py-1.5">{payeeLabel(transaction)}</td>
+                      <td
+                        className={cn('px-2 py-1.5', !transaction.approved && 'font-semibold')}
+                        title={bankSource(transaction) ?? undefined}
+                      >
+                        {payeeLabel(transaction)}
+                        <MatchedIcon transaction={transaction} />
+                      </td>
                       <td className="px-2 py-1.5">
                         {isSplit ? (
                           <button
@@ -416,20 +506,37 @@ export function TransactionRegister({
                           <Money cents={transaction.runningBalanceCents ?? 0} />
                         </td>
                       )}
-                      {/* Quiet until the row is hovered or a button in it has focus. */}
-                      <td className="px-2 py-1 text-right whitespace-nowrap opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={!account}
-                          onClick={() => setEditingId(transaction.id)}
-                        >
-                          Edit
-                        </Button>
-                        <DeleteButton
-                          transaction={transaction}
-                          onDelete={() => deleteTransaction.mutate(transaction.id)}
-                        />
+                      <td className="px-2 py-1 text-right whitespace-nowrap">
+                        <span className="inline-flex items-center justify-end gap-1">
+                          {/* Quiet until the row is hovered or a button in it has focus. */}
+                          <span className="opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={!account}
+                              onClick={() => setEditingId(transaction.id)}
+                            >
+                              Edit
+                            </Button>
+                            {transaction.bank?.matched && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => unmatch.mutate(transaction.id)}
+                              >
+                                Unmatch
+                              </Button>
+                            )}
+                            <DeleteButton
+                              transaction={transaction}
+                              // Rejecting an import keeps the bank from bringing it back.
+                              label={transaction.approved ? 'Delete' : 'Reject'}
+                              onDelete={() => deleteTransaction.mutate(transaction.id)}
+                            />
+                          </span>
+                          {/* Always visible, so reviewing doesn't need hovering. */}
+                          {!transaction.approved && <ApproveButton transaction={transaction} />}
+                        </span>
                       </td>
                     </tr>
                     {isExpanded &&
@@ -499,6 +606,7 @@ function PhoneRegister({
   onEdit,
   onSave,
   onDelete,
+  onUnmatch,
 }: {
   transactions: Transaction[];
   showAccount: boolean;
@@ -506,6 +614,7 @@ function PhoneRegister({
   onEdit: (id: number | null) => void;
   onSave: (id: number, input: TransactionInput) => Promise<void>;
   onDelete: (id: number) => void;
+  onUnmatch: (id: number) => void;
 }) {
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts });
   const editing = transactions.find((transaction) => transaction.id === editingId);
@@ -517,7 +626,14 @@ function PhoneRegister({
         {transactions.map((transaction) => {
           const category = phoneCategory(transaction);
           return (
-            <li key={transaction.id} className="flex items-center gap-1 px-1">
+            <li
+              key={transaction.id}
+              className={cn(
+                'flex items-center gap-1 px-1',
+                !transaction.approved &&
+                  'bg-accent-soft/40 shadow-[inset_3px_0_0_var(--primary)] first:rounded-t-lg last:rounded-b-lg',
+              )}
+            >
               <RegisterFlag transaction={transaction} />
               <button
                 type="button"
@@ -526,8 +642,14 @@ function PhoneRegister({
                 className="flex min-h-14 min-w-0 flex-1 cursor-pointer flex-col justify-center gap-0.5 px-1 py-1.5 text-left"
               >
                 <span className="flex items-baseline justify-between gap-2">
-                  <span className="min-w-0 truncate font-medium">
+                  <span
+                    className={cn(
+                      'min-w-0 truncate',
+                      transaction.approved ? 'font-medium' : 'font-semibold',
+                    )}
+                  >
                     {payeeLabel(transaction) || 'No payee'}
+                    <MatchedIcon transaction={transaction} />
                   </span>
                   <Money
                     cents={transaction.amountCents}
@@ -542,6 +664,7 @@ function PhoneRegister({
                   {category && <span className="min-w-0 truncate">{category}</span>}
                 </span>
               </button>
+              {!transaction.approved && <ApproveButton transaction={transaction} />}
               <ClearedToggle transaction={transaction} />
             </li>
           );
@@ -560,10 +683,18 @@ function PhoneRegister({
               onSubmit={(input) => onSave(editing.id, input)}
               onCancel={() => onEdit(null)}
             />
-            <div className="mt-6 border-t pt-4">
+            {editing.bank && (
+              <p className="mt-3 text-xs text-muted-foreground">{bankSource(editing)}</p>
+            )}
+            <div className="mt-6 flex flex-wrap justify-between gap-2 border-t pt-4">
+              {editing.bank?.matched && (
+                <Button variant="ghost" size="sm" onClick={() => onUnmatch(editing.id)}>
+                  Unmatch
+                </Button>
+              )}
               <DeleteButton
                 transaction={editing}
-                label="Delete transaction"
+                label={editing.approved ? 'Delete transaction' : 'Reject transaction'}
                 onDelete={() => onDelete(editing.id)}
               />
             </div>

@@ -18,6 +18,8 @@ const base: Transaction = {
   transferAccountId: null,
   transferAccountName: null,
   lines: [{ categoryId: 5, categoryName: 'Groceries', amountCents: -1_234_56, memo: '' }],
+  approved: true,
+  bank: null,
 };
 
 describe('payeeLabel', () => {

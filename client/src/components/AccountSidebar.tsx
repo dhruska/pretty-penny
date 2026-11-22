@@ -52,6 +52,16 @@ function AccountLink({ account }: { account: Account }) {
         <span className="truncate" title={account.name}>
           {account.name}
         </span>
+        {account.unapprovedCount > 0 && (
+          <span
+            role="img"
+            aria-label={`${account.unapprovedCount} to review`}
+            title={`${account.unapprovedCount} to review`}
+            className="shrink-0 rounded-full bg-primary px-1.5 text-[10px] leading-4 font-semibold text-primary-foreground tabular-nums"
+          >
+            {account.unapprovedCount}
+          </span>
+        )}
         {account.bank && account.bank.status !== 'ok' && (
           <TriangleAlert
             role="img"
