@@ -12,11 +12,12 @@ import { Settings2 } from 'lucide-react';
 import { useId, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { AccountTypeSelect } from './AccountTypeSelect';
+import { BankLinkSection } from './BankLinkSection';
 import { ConfirmDelete } from './ConfirmDelete';
 
 /**
- * An account's settings in one place, as in YNAB: its name and type, and closing, reopening or
- * deleting it.
+ * An account's settings in one place, as in YNAB: its name and type, its bank link, and closing,
+ * reopening or deleting it.
  */
 export function EditAccountDialog({ account }: { account: Account }) {
   const id = useId();
@@ -115,6 +116,7 @@ export function EditAccountDialog({ account }: { account: Account }) {
             Save
           </Button>
         </form>
+        <BankLinkSection account={account} />
         <div className="mt-5 flex flex-wrap justify-between gap-2 border-t pt-4">
           {account.closed ? (
             <Button variant="outline" size="sm" onClick={() => setClosed.mutate(false)}>

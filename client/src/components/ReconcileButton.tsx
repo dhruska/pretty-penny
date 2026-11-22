@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { today } from '@/lib/dates';
 import { notify } from '@/lib/notify';
 import { refresh } from '@/lib/queries';
-import { formatCents, parseDollars } from '@/lib/money';
+import { centsToInput, formatCents, parseDollars } from '@/lib/money';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { Money } from './Money';
@@ -81,7 +81,17 @@ export function ReconcileButton({ account }: { account: Account }) {
         {step === 'ask' ? (
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <Button variant="secondary" onClick={() => setStep('enter')}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                // A linked account starts from the balance the bank last gave Plaid.
+                const fromBank = account.bank?.balanceCents;
+                if (fromBank !== null && fromBank !== undefined) {
+                  setBankBalance(`${fromBank < 0 ? '-' : ''}${centsToInput(fromBank)}`);
+                }
+                setStep('enter');
+              }}
+            >
               No
             </Button>
             <Button disabled={reconcile.isPending} onClick={() => reconcile.mutate(clearedCents)}>

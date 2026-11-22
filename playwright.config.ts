@@ -7,6 +7,7 @@ loadEnv();
 const API_PORT = '3101';
 const WEB_PORT = '5273';
 const FAKE_YNAB_PORT = '3102';
+const FAKE_PLAID_PORT = '3103';
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 if (!testDatabaseUrl) throw new Error('TEST_DATABASE_URL is required');
 
@@ -44,12 +45,24 @@ export default defineConfig({
       env: { FAKE_YNAB_PORT },
     },
     {
+      // Stands in for Plaid's API, so bank tests never contact Plaid.
+      command: 'npx tsx e2e/support/fake-plaid.ts',
+      url: `http://127.0.0.1:${FAKE_PLAID_PORT}/health`,
+      env: { FAKE_PLAID_PORT },
+    },
+    {
       command: 'npm run start:test -w server',
       url: `http://localhost:${API_PORT}/api/hello`,
       env: {
         API_PORT,
         DATABASE_URL: testDatabaseUrl,
         YNAB_API_URL: `http://127.0.0.1:${FAKE_YNAB_PORT}/v1`,
+        // Made-up settings for the fake Plaid server; the key exists only for these tests.
+        PLAID_CLIENT_ID: 'e2e-client',
+        PLAID_SECRET: 'e2e-secret',
+        PLAID_ENV: 'sandbox',
+        PLAID_API_URL: `http://127.0.0.1:${FAKE_PLAID_PORT}`,
+        BANK_TOKEN_KEY: 'ZTJlLW9ubHkta2V5LWZvci1mYWtlLXBsYWlkLXRlc3Q=',
       },
     },
     {

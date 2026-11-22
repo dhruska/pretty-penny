@@ -43,7 +43,10 @@ export const AFFECTS = {
     ['scheduled'],
     ['report'],
     ['import-status'],
+    ['bank-connections'],
   ],
+  /** Connecting, fixing or removing a bank, or linking its accounts. */
+  bank: [['bank-connections'], ['accounts']],
   /** Changing a schedule without posting it. */
   schedules: [['scheduled'], ['budget']],
   flags: [['flags']],

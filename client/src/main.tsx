@@ -8,6 +8,8 @@ import '@fontsource-variable/inter';
 import './index.css';
 import { AccountPage } from './pages/AccountPage';
 import { AllTransactionsPage } from './pages/AllTransactionsPage';
+import { BankConnectionsPage } from './pages/BankConnectionsPage';
+import { BankOAuthPage } from './pages/BankOAuthPage';
 import { BudgetPage } from './pages/BudgetPage';
 import { ImportPage } from './pages/ImportPage';
 import { LoginPage } from './pages/LoginPage';
@@ -35,6 +37,8 @@ createRoot(document.getElementById('root')!).render(
             <Route path="accounts/:id" element={<AccountPage />} />
             <Route path="transactions" element={<AllTransactionsPage />} />
             <Route path="import" element={<ImportPage />} />
+            <Route path="bank" element={<BankConnectionsPage />} />
+            <Route path="bank/oauth" element={<BankOAuthPage />} />
             <Route
               path="reports"
               element={

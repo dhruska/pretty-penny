@@ -7,12 +7,14 @@ import { cn } from 'cn';
 import {
   ChartColumn,
   Import,
+  Landmark,
   List,
   LogOut,
   Monitor,
   Moon,
   Plus,
   Sun,
+  TriangleAlert,
   Wallet,
   type LucideIcon,
 } from 'lucide-react';
@@ -46,8 +48,18 @@ function AccountLink({ account }: { account: Account }) {
       }
     >
       {/* Long names shorten with "…", keeping the balance on one line beside them. */}
-      <span className="min-w-0 truncate" title={account.name}>
-        {account.name}
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span className="truncate" title={account.name}>
+          {account.name}
+        </span>
+        {account.bank && account.bank.status !== 'ok' && (
+          <TriangleAlert
+            role="img"
+            aria-label="Bank connection needs fixing"
+            className="size-3.5 shrink-0 self-center text-negative"
+            strokeWidth={2}
+          />
+        )}
       </span>
       <Money cents={account.balanceCents} className="shrink-0 font-normal" />
     </NavLink>
@@ -216,6 +228,9 @@ export function SidebarContents() {
       <AddAccountButton />
 
       <div className="mt-6 space-y-0.5 border-t pt-3">
+        <PageLink to="/bank" Icon={Landmark} quiet>
+          Bank connections
+        </PageLink>
         <PageLink to="/import" Icon={Import} quiet>
           Import from YNAB
         </PageLink>

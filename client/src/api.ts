@@ -9,6 +9,51 @@ export interface Account {
   balanceCents: number;
   clearedBalanceCents: number;
   lastReconciledAt: string | null;
+  /** The bank account it's linked to through Plaid, if any. */
+  bank: AccountBank | null;
+}
+
+/** 'needs_sign_in' and 'error' come with a message saying what to do. */
+export type ConnectionStatus = 'ok' | 'needs_sign_in' | 'error';
+
+export interface AccountBank {
+  bankAccountId: number;
+  institutionName: string;
+  mask: string | null;
+  /** Negative when money is owed. Null when the bank doesn't say. */
+  balanceCents: number | null;
+  status: ConnectionStatus;
+  problem: string | null;
+  updatedAt: string | null;
+}
+
+export interface BankStatus {
+  configured: boolean;
+  environment: 'sandbox' | 'production' | null;
+  /** What's missing from .env. */
+  problems: string[];
+}
+
+export interface BankAccount {
+  id: number;
+  name: string;
+  mask: string | null;
+  plaidType: string;
+  plaidSubtype: string | null;
+  balanceCents: number | null;
+  accountId: number | null;
+  accountName: string | null;
+  /** What a new account for it starts as. */
+  suggestedType: string;
+}
+
+export interface BankConnection {
+  id: number;
+  institutionName: string;
+  status: ConnectionStatus;
+  problem: string | null;
+  updatedAt: string | null;
+  accounts: BankAccount[];
 }
 
 /** Reconciled transactions are locked; only reconciling an account sets that status. */
@@ -435,6 +480,32 @@ export const api = {
   moveCategory: (id: number, direction: MoveDirection) =>
     request<void>(`/categories/${id}/move`, 'POST', { direction }),
   deleteCategory: (id: number) => request<void>(`/categories/${id}`, 'DELETE'),
+  bankStatus: () => request<BankStatus>('/bank/status'),
+  listBankConnections: () => request<BankConnection[]>('/bank/connections'),
+  /** With a connection, Plaid's sign-in window opens to fix it. */
+  createLinkToken: (connectionId?: number) =>
+    request<{ linkToken: string }>(
+      '/bank/link-token',
+      'POST',
+      connectionId ? { connectionId } : {},
+    ),
+  connectBank: (publicToken: string, institutionName: string | undefined) =>
+    request<BankConnection>('/bank/connections', 'POST', {
+      publicToken,
+      ...(institutionName && { institutionName }),
+    }),
+  refreshBankConnection: (id: number) =>
+    request<BankConnection>(`/bank/connections/${id}/refresh`, 'POST'),
+  removeBankConnection: (id: number) => request<void>(`/bank/connections/${id}`, 'DELETE'),
+  /** Null unlinks it. */
+  linkBankAccount: (bankAccountId: number, accountId: number | null) =>
+    request<BankConnection>(`/bank/accounts/${bankAccountId}/link`, 'PUT', { accountId }),
+  createAccountFromBank: (bankAccountId: number, input: { name: string; type: string }) =>
+    request<BankConnection & { accountId: number }>(
+      `/bank/accounts/${bankAccountId}/create-account`,
+      'POST',
+      input,
+    ),
   importStatus: () => request<{ canImport: boolean }>('/import/status'),
   listYnabPlans: (token: string) =>
     request<{ plans: YnabPlanSummary[] }>('/import/ynab/plans', 'POST', { token }),

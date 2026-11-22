@@ -1,4 +1,4 @@
-import { api, type Account, type Frequency, type TransactionInput } from '@/api';
+import { api, type Account, type AccountBank, type Frequency, type TransactionInput } from '@/api';
 import { ScheduledList } from '@/components/ScheduledList';
 import { EditAccountDialog } from '@/components/EditAccountDialog';
 import { Money } from '@/components/Money';
@@ -9,7 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useIsPhone } from '@/lib/useIsPhone';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Search, TriangleAlert } from 'lucide-react';
+import { bankDifference, updatedAgo } from '@/lib/bank';
 import { accountTypeLabel } from '@/lib/accountTypes';
 import { today } from '@/lib/dates';
 import { notify } from '@/lib/notify';
@@ -23,7 +24,45 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { useDeferredValue, useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router';
+import { Link, useParams } from 'react-router';
+
+/** What the linked bank last said, and how it compares with the cleared balance. */
+function BankBalance({ account, bank }: { account: Account; bank: AccountBank }) {
+  const difference = bankDifference(account);
+  return (
+    <section aria-label="Bank" className="mt-2 space-y-1 text-sm">
+      <p className="flex flex-wrap items-baseline gap-x-2 text-muted-foreground">
+        <span>
+          {bank.institutionName}
+          {bank.mask && ` ••${bank.mask}`}{' '}
+          {bank.balanceCents === null ? (
+            'gives no balance'
+          ) : (
+            <Money cents={bank.balanceCents} className="font-medium text-foreground" />
+          )}
+        </span>
+        <span className="text-xs">{updatedAgo(bank.updatedAt)}</span>
+      </p>
+      {difference !== null && bank.status === 'ok' && (
+        <p className="text-xs text-warning">
+          <Money cents={Math.abs(difference)} /> {difference > 0 ? 'more' : 'less'} than your
+          cleared balance. Clear what’s gone through, or reconcile.
+        </p>
+      )}
+      {bank.status !== 'ok' && (
+        <p role="alert" className="flex items-start gap-1.5 text-xs text-negative">
+          <TriangleAlert aria-hidden="true" className="mt-px size-3.5 shrink-0" />
+          <span>
+            {bank.problem}{' '}
+            <Link to="/bank" className="font-medium underline">
+              Go to Bank connections
+            </Link>
+          </span>
+        </p>
+      )}
+    </section>
+  );
+}
 
 export function AccountPage() {
   const accountId = Number(useParams().id);
@@ -123,6 +162,7 @@ function AccountDetails({ account }: { account: Account }) {
               ? `Last reconciled ${new Date(account.lastReconciledAt).toLocaleDateString()}`
               : 'Not reconciled yet'}
           </p>
+          {account.bank && <BankBalance account={account} bank={account.bank} />}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {!account.closed && <ReconcileButton account={account} />}
