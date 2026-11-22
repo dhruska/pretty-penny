@@ -8,7 +8,13 @@ import {
   type FakeTransactionInput,
 } from '../bank/fake-plaid.js';
 import { createDb } from '../db/client.js';
-import { bankTransactions, scheduledTransactions, transactions } from '../db/schema.js';
+import {
+  bankAccounts,
+  bankConnections,
+  bankTransactions,
+  scheduledTransactions,
+  transactions,
+} from '../db/schema.js';
 import { getTestDatabaseUrl } from '../env.js';
 import { resetDb } from '../test/reset-db.js';
 
@@ -669,5 +675,108 @@ describe('the transaction the bank sent', () => {
     await link(checkingBank, other);
     expect((await register(other)).map((row) => row.payee)).toContain('PAYROLL DEPOSIT');
     expect(connection.id).toBeGreaterThan(0);
+  });
+});
+
+describe('edge cases', () => {
+  it('works out a start date for an account linked before start dates existed', async () => {
+    const { checking, connection, checkingBank } = await setUp();
+    await link(checkingBank, checking);
+    await db.update(bankAccounts).set({ importFrom: null });
+    bank({ id: 'pay', amount: -2500, date: '2026-11-14', name: 'PAYROLL DEPOSIT' });
+    await update(connection.id);
+    const [saved] = await db.select().from(bankAccounts).where(eq(bankAccounts.id, checkingBank));
+    expect(saved!.importFrom).toBe('2026-11-05');
+    expect((await register(checking))[0]!.payee).toBe('PAYROLL DEPOSIT');
+  });
+
+  it('imports as usual when a matching schedule can’t post', async () => {
+    const { checking, checkingBank } = await setUp();
+    const savings = await createAccount('Savings', 'savings');
+    await call('POST', `/api/accounts/${checking}/scheduled`, {
+      date: '2026-11-20',
+      payee: '',
+      amountCents: -10000,
+      transferAccountId: savings,
+      frequency: 'monthly',
+    });
+    // A closed account can't take the schedule's transfer.
+    await call('POST', `/api/accounts/${savings}/close`, { date: TODAY });
+    bank({ id: 'save', amount: 100, date: '2026-11-18', name: 'TRANSFER TO SAVINGS' });
+    await link(checkingBank, checking);
+
+    expect((await register(checking))[0]).toMatchObject({
+      payee: 'TRANSFER TO SAVINGS',
+      approved: false,
+    });
+    const [schedule] = await db.select().from(scheduledTransactions);
+    expect(schedule!.nextDate).toBe('2026-11-20');
+  });
+
+  it('saves a problem that turns up while syncing, and shows other errors', async () => {
+    const { checking, connection, checkingBank } = await setUp();
+    await link(checkingBank, checking);
+    const original = plaid.handle;
+    try {
+      plaid.handle = (path, body) =>
+        path === '/transactions/sync'
+          ? {
+              status: 400,
+              body: {
+                error_type: 'ITEM_ERROR',
+                error_code: 'ITEM_LOGIN_REQUIRED',
+                error_message: 'login required',
+              },
+            }
+          : original(path, body);
+      expect(await update(connection.id)).toMatchObject({ status: 'needs_sign_in' });
+
+      plaid.handle = (path, body) =>
+        path === '/transactions/sync'
+          ? {
+              status: 500,
+              body: {
+                error_type: 'API_ERROR',
+                error_code: 'INTERNAL_SERVER_ERROR',
+                error_message: 'oops',
+              },
+            }
+          : original(path, body);
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/bank/connections/${connection.id}/refresh`,
+      });
+      expect(response.statusCode).toBe(502);
+    } finally {
+      plaid.handle = original;
+    }
+    const [saved] = await db.select().from(bankConnections);
+    expect(saved!.status).toBe('ok');
+  });
+
+  it('gives up after Plaid keeps reporting changes while paging', async () => {
+    const { checking, connection, checkingBank } = await setUp();
+    await link(checkingBank, checking);
+    const original = plaid.handle;
+    try {
+      plaid.handle = (path, body) =>
+        path === '/transactions/sync'
+          ? {
+              status: 400,
+              body: {
+                error_type: 'TRANSACTIONS_ERROR',
+                error_code: 'TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION',
+                error_message: 'changed',
+              },
+            }
+          : original(path, body);
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/bank/connections/${connection.id}/refresh`,
+      });
+      expect(response.statusCode).toBe(502);
+    } finally {
+      plaid.handle = original;
+    }
   });
 });
