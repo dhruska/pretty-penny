@@ -265,6 +265,58 @@ describe('importing', () => {
     expect((await register(checking)).some((row) => row.payee === 'EARLY')).toBe(true);
   });
 
+  it('moves a starting balance back when importing starts earlier, so the bank still matches', async () => {
+    const connection = await connect();
+    const checkingBank = connection.accounts[0]!.id;
+    bank({ id: 'shop', amount: 50, date: '2026-11-10', name: 'SHOP' });
+    bank({ id: 'refund', amount: -100, date: '2026-11-12', name: 'REFUND' });
+    bank({ id: 'old', amount: 7, date: '2026-10-20', name: 'OLD' });
+    // Made from the bank account: its starting balance is the bank's $2,450.00 today.
+    const { accountId } = await call<{ accountId: number }>(
+      'POST',
+      `/api/bank/accounts/${checkingBank}/create-account`,
+      { name: 'Everyday', type: 'checking' },
+    );
+    expect(await register(accountId)).toHaveLength(1);
+
+    await call('PUT', `/api/bank/accounts/${checkingBank}/import-from`, {
+      importFrom: '2026-11-01',
+    });
+    let rows = await register(accountId);
+    expect(rows.map((row) => [row.date, row.payee, row.amountCents])).toEqual([
+      ['2026-11-12', 'REFUND', 10000],
+      ['2026-11-10', 'SHOP', -5000],
+      ['2026-10-31', 'Starting Balance', 240000],
+    ]);
+    expect((await accounts())[0]!.balanceCents).toBe(245000);
+
+    // Again, further back.
+    await call('PUT', `/api/bank/accounts/${checkingBank}/import-from`, {
+      importFrom: '2026-10-15',
+    });
+    rows = await register(accountId);
+    expect(rows.at(-1)).toMatchObject({ date: '2026-10-14', amountCents: 240700 });
+    expect((await accounts())[0]!.balanceCents).toBe(245000);
+
+    // Moving it later changes nothing.
+    await call('PUT', `/api/bank/accounts/${checkingBank}/import-from`, {
+      importFrom: '2026-11-11',
+    });
+    expect((await accounts())[0]!.balanceCents).toBe(245000);
+  });
+
+  it('leaves an older starting balance alone', async () => {
+    const { checking, checkingBank } = await setUp();
+    bank({ id: 'early', amount: 7, date: '2026-10-25', name: 'EARLY' });
+    await link(checkingBank, checking);
+    await call('PUT', `/api/bank/accounts/${checkingBank}/import-from`, {
+      importFrom: '2026-10-20',
+    });
+    const rows = await register(checking);
+    expect(rows.some((row) => row.payee === 'EARLY')).toBe(true);
+    expect(rows.at(-1)).toMatchObject({ date: '2026-10-01', amountCents: 100000 });
+  });
+
   it('refuses a start date for an unlinked bank account', async () => {
     const connection = await connect();
     const response = await app.inject({

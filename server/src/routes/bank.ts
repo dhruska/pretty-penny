@@ -12,7 +12,7 @@ import {
   toHttpError,
   updateConnection,
 } from '../bank/service.js';
-import { importWaiting, suggestedImportFrom } from '../bank/importer.js';
+import { importWaiting, keepStartingBalance, suggestedImportFrom } from '../bank/importer.js';
 import { importPayee } from '../bank/matching.js';
 import type { Db, Executor } from '../db/client.js';
 import { accounts, bankAccounts, bankConnections, bankTransactions } from '../db/schema.js';
@@ -337,7 +337,8 @@ export function registerBankRoutes(
           .set({ importFrom: request.body.importFrom })
           .where(eq(bankAccounts.id, bankAccount.id))
           .returning();
-        await importWaiting(tx, updated!, today());
+        const added = await importWaiting(tx, updated!, today());
+        await keepStartingBalance(tx, bankAccount.accountId!, request.body.importFrom, added);
       });
       return connectionView(bankAccount.connectionId);
     },

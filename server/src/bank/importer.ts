@@ -214,14 +214,16 @@ export async function importWaiting(
   bankAccount: BankAccount,
   today: string,
   alsoBefore: number[] = [],
-) {
-  if (bankAccount.accountId === null) return;
+): Promise<Added[]> {
+  // New transactions this adds, rather than matches, for keeping a starting balance right.
+  const added: Added[] = [];
+  if (bankAccount.accountId === null) return added;
   const [account] = await tx
     .select({ id: accounts.id, onBudget: accounts.onBudget, closedAt: accounts.closedAt })
     .from(accounts)
     .where(eq(accounts.id, bankAccount.accountId));
   // A closed account takes nothing new; its bank transactions wait until it's reopened.
-  if (!account || account.closedAt) return;
+  if (!account || account.closedAt) return added;
 
   let importFrom = bankAccount.importFrom;
   if (importFrom === null) {
@@ -240,7 +242,7 @@ export async function importWaiting(
     )
     .orderBy(asc(bankTransactions.date), asc(bankTransactions.id));
   const ready = rows.filter((row) => row.date >= importFrom || alsoBefore.includes(row.id));
-  if (ready.length === 0) return;
+  if (ready.length === 0) return added;
 
   const imported = (row: BankTransaction, transactionId: number, matchedCleared: string | null) =>
     tx
@@ -314,6 +316,7 @@ export async function importWaiting(
         if (posted !== null) {
           usedSchedules.add(schedule.id);
           await imported(row, posted, 'uncleared');
+          added.push({ date: row.date, amountCents: row.amountCents });
           continue;
         }
       }
@@ -333,7 +336,48 @@ export async function importWaiting(
       { cleared: 'cleared', approved: false },
     );
     await imported(row, id, null);
+    added.push({ date: row.date, amountCents: row.amountCents });
   }
+  return added;
+}
+
+interface Added {
+  date: string;
+  amountCents: number;
+}
+
+/**
+ * An account's starting balance already includes everything up to its date. When importing
+ * moves to start on or before that date, the starting balance moves to the day before the new
+ * start, less what was just imported from those days, so nothing counts twice and the account
+ * still matches the bank.
+ */
+export async function keepStartingBalance(
+  tx: Executor,
+  accountId: number,
+  importFrom: string,
+  added: Added[],
+) {
+  const [starting] = await tx
+    .select({ id: transactions.id, date: transactions.date, amountCents: transactions.amountCents })
+    .from(transactions)
+    .where(and(eq(transactions.accountId, accountId), eq(transactions.isStartingBalance, true)))
+    .limit(1);
+  if (!starting || starting.date < importFrom) return;
+
+  const overlap = added
+    .filter((item) => item.date <= starting.date)
+    .reduce((sum, item) => sum + item.amountCents, 0);
+  const amountCents = starting.amountCents - overlap;
+  await tx
+    .update(transactions)
+    .set({ date: addDays(importFrom, -1), amountCents })
+    .where(eq(transactions.id, starting.id));
+  // A budget account's starting balance has one line, to Ready to Assign.
+  await tx
+    .update(transactionLines)
+    .set({ amountCents })
+    .where(eq(transactionLines.transactionId, starting.id));
 }
 
 /** The schedule whose next occurrence an import matches: same amount, within 10 days, closest. */

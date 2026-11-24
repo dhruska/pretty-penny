@@ -228,7 +228,7 @@ Pretty Penny stays reachable only on your tailnet. It asks Plaid for updates eve
 
 6. **Connect your banks.** Open **Bank connections** in the menu and select **Connect a bank**. Afterward, choose the Pretty Penny account for each bank account, add a new one, or leave it unlinked. A new account starts with the bank's balance today. You can also link an account from **Edit account**.
 
-7. **Check where importing starts.** Each linked account shows "Importing from" a date, with **Change**. For an account you already had, it's 3 days before your newest reconciled transaction, as in YNAB, so reconciling before linking keeps the overlap small. Transactions you entered that match an import, by amount and within 10 days, aren't duplicated.
+7. **Check where importing starts.** Each linked account shows "Importing from" a date, with **Change**. For an account you already had, it's 3 days before your newest reconciled transaction, as in YNAB, so reconciling before linking keeps the overlap small. Transactions you entered that match an import, by amount and within 10 days, aren't duplicated. Moving the date earlier on an account that started at the bank's balance moves that starting balance back too, so the account still matches the bank.
 
 New transactions arrive every hour, or when you select **Import now** on an account. They count in your budget right away, marked as needing review, with an **Approve** button. **Approve all** approves an account's at once, **Reject** removes one for good, and saving an edit approves it too. Pending transactions show in their own section until they post. Right after connecting, Plaid can take a few minutes to gather history.
 
