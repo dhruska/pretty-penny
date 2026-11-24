@@ -63,6 +63,7 @@ Run `nvm use` in new terminal sessions so you're on the project's Node version.
 | Command                 | What it does                                   |
 | ----------------------- | ---------------------------------------------- |
 | `npm run dev`           | Starts the API and client                      |
+| `npm run dev:sandbox`   | Starts them with Plaid's test banks            |
 | `npm test`              | Runs all unit, API and browser tests           |
 | `npm run test:unit`     | Runs unit and API tests only                   |
 | `npm run test:e2e`      | Runs Playwright browser tests only             |
@@ -100,7 +101,7 @@ npm run db:migrate
 
 ## Bank sync
 
-Accounts can be linked to banks through Plaid, under **Bank connections** in the sidebar. New transactions then import every hour for review, matching ones entered by hand. To try it in development, create a free Plaid account and add its Sandbox keys to `.env`, with a key made by `openssl rand -base64 32`:
+Accounts can be linked to banks through Plaid, under **Bank connections** in the sidebar. New transactions then import every hour for review, matching ones entered by hand. To try it in development with Plaid's test banks, create a free Plaid account and put its Sandbox keys in `.env.sandbox`, with a key made by `openssl rand -base64 32`. Git ignores the file.
 
 ```sh
 PLAID_CLIENT_ID=your client ID
@@ -109,7 +110,9 @@ PLAID_ENV=sandbox
 BANK_TOKEN_KEY=your key
 ```
 
-Sandbox has only test banks; sign in with `user_good` and `pass_good`. Tests use a fake Plaid and never contact Plaid. For real banks, see the Bank sync section of [Running Pretty Penny at home](docs/self-hosting.md#bank-sync).
+Then run `npm run dev:sandbox`. It uses its own database, `pretty_penny_try`, so test transactions never reach your real data. It creates and updates the database as needed, runs on ports 3201 and 5373 alongside `npm run dev`, and listens on the Mac's Tailscale address, which it prints, so a phone on your tailnet can open it. The first time, set its password with `DATABASE_URL=postgres://localhost:5432/pretty_penny_try npm run set-password`.
+
+Sandbox has only test banks: choose one such as First Platypus Bank, and sign in with `user_good` and `pass_good`. Tests use a fake Plaid and never contact Plaid. For real banks, see the Bank sync section of [Running Pretty Penny at home](docs/self-hosting.md#bank-sync).
 
 ## Running it at home
 
