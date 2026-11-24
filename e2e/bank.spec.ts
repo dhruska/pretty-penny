@@ -93,8 +93,11 @@ test('connects a bank, links one account and adds another from it', async ({ pag
   await expect(bank).toContainText('Northwind Bank ••1234 $2,450.00');
   await expect(bank).toContainText('$50.00 more than your cleared balance');
 
-  // Reconciling starts from that balance.
+  // Reconciling mentions that balance, and a "No" starts from it; "Yes" never adjusts.
   await page.getByRole('button', { name: 'Reconcile' }).click();
+  await expect(page.getByRole('note')).toHaveText(
+    'Northwind Bank says $2,450.00, which is $50.00 more.',
+  );
   await page.getByRole('button', { name: 'No' }).click();
   await expect(page.getByLabel('Bank balance')).toHaveValue('2450.00');
 });

@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { bankDifference } from '@/lib/bank';
 import { today } from '@/lib/dates';
 import { notify } from '@/lib/notify';
 import { refresh } from '@/lib/queries';
@@ -42,6 +43,8 @@ export function ReconcileButton({ account }: { account: Account }) {
   });
 
   const clearedCents = account.clearedBalanceCents;
+  // What a linked bank last reported, when it differs from the cleared balance.
+  const bankDifferenceCents = bankDifference(account);
   const bankCents = bankBalance.trim() === '' ? null : parseDollars(bankBalance);
   const differenceCents = bankCents === null ? null : bankCents - clearedCents;
 
@@ -75,6 +78,19 @@ export function ReconcileButton({ account }: { account: Account }) {
               : 'Enter the balance your bank shows, leaving out pending transactions.'}
           </AlertDialogDescription>
         </AlertDialogHeader>
+
+        {step === 'ask' && bankDifferenceCents !== null && (
+          // Yes still means no adjustment; this only says what the linked bank reports.
+          <p
+            role="note"
+            className="rounded-lg border border-warning/40 bg-warning/10 p-2.5 text-sm"
+          >
+            {account.bank!.institutionName} says{' '}
+            <Money cents={account.bank!.balanceCents!} className="font-medium" />, which is{' '}
+            <Money cents={Math.abs(bankDifferenceCents)} className="font-medium" />{' '}
+            {bankDifferenceCents > 0 ? 'more' : 'less'}.
+          </p>
+        )}
 
         {reconcile.isError && <p className="text-sm text-negative">{reconcile.error.message}</p>}
 
