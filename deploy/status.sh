@@ -6,7 +6,7 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 LABEL="${LABEL:-com.prettypenny.server}"
 LOG="$HOME/Library/Logs/PrettyPenny/$LABEL.log"
 PORT="${API_PORT:-$(grep -E '^API_PORT=' "$REPO/.env" 2>/dev/null | cut -d= -f2)}"
-PORT="${PORT:-3001}"
+PORT="${PORT:-3001}"  # The app's own default when .env sets none.
 problems=0
 
 check() {
@@ -25,7 +25,8 @@ check "Pretty Penny answers on port $PORT" "curl -fsS http://127.0.0.1:$PORT/api
 # Tailscale's command line tool, from Homebrew or inside the app.
 TAILSCALE="$(command -v tailscale || echo /Applications/Tailscale.app/Contents/MacOS/Tailscale)"
 if [[ -x "$TAILSCALE" ]]; then
-  check "Tailscale is serving port $PORT over HTTPS" "$TAILSCALE serve status | grep -q 127.0.0.1:$PORT"
+  # The JSON lists both a Tailscale Service and plain serving from the Mac's own name.
+  check "Tailscale is serving port $PORT over HTTPS" "$TAILSCALE serve status --json | grep -q 127.0.0.1:$PORT"
 else
   echo "SKIP  Tailscale's command line tool wasn't found"
 fi

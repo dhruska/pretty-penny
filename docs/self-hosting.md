@@ -5,19 +5,19 @@ This guide sets up Pretty Penny on a Mac that stays on at home, such as a Mac mi
 When you're done:
 
 - Postgres and Pretty Penny start on their own whenever you log in to the Mac.
-- Pretty Penny is reachable only on your tailnet, at an HTTPS address like `https://mac-mini.your-tailnet.ts.net`. Nothing is open to your home network or the internet.
+- Pretty Penny is reachable only on your tailnet, at its own HTTPS address like `https://budget.your-tailnet.ts.net`, through [Tailscale Services](https://tailscale.com/docs/features/tailscale-services). The Mac keeps its own name, and other apps on it can have addresses of their own. Nothing is open to your home network or the internet.
 - Updating is one command.
 
-You'll need an Apple silicon Mac on a recent macOS, a Tailscale account with this Mac and your other devices on it, and about half an hour.
+You'll need an Apple silicon Mac on macOS 13 or later, a Tailscale account with this Mac and your other devices on it, and about half an hour. You'll need to be an Owner or Admin of your tailnet, which you are on a personal one.
 
 ## 1. Set up the Mac
 
 In **System Settings**:
 
-- **Energy**: turn on **Prevent automatic sleeping when the display is off** and **Start up automatically after a power failure**.
+- **Energy**: turn on **Prevent automatic sleeping when the display is off** and **Start up automatically after a power failure**. In Terminal, `sudo pmset -a sleep 0` and `sudo pmset -a autorestart 1` do the same; `pmset -g` shows them.
 - **General → Date & Time**: check the time zone is yours. Scheduled transactions post by the Mac's clock.
 
-If FileVault is on, which is a good idea, the Mac waits at the login screen after any restart, including after a power cut. Log in, and Postgres and Pretty Penny start. You can lock the screen afterward; they keep running.
+If FileVault is on, which is a good idea (`fdesetup status` says), the Mac waits at the login screen after any restart, including after a power cut. Log in, and Postgres and Pretty Penny start. You can lock the screen afterward; they keep running.
 
 ## 2. Install the tools
 
@@ -60,10 +60,11 @@ Edit `.env` so it holds just these lines, with your database password:
 
 ```sh
 DATABASE_URL=postgres://pretty_penny:YOUR_DATABASE_PASSWORD@localhost:5432/pretty_penny
-API_PORT=3001
+# Pretty Penny's port on this Mac. Any free one; an uncommon one leaves 3000-ish ports for other projects.
+API_PORT=4730
 SECURE_COOKIES=true
-# Filled in at step 6.
-PUBLIC_URL=
+# Its address, from step 6: budget, then your tailnet's name, which the Tailscale admin console shows under DNS.
+PUBLIC_URL=https://budget.your-tailnet.ts.net
 # Filled in under Backing up.
 BACKUP_DIRS=
 # Filled in under Bank sync, if you use it.
@@ -90,37 +91,57 @@ deploy/install-service.sh
 deploy/status.sh
 ```
 
-The service starts now and whenever you log in, and restarts if it stops. `status.sh` should show everything OK except Tailscale, which comes next.
+The service starts now and whenever you log in, and restarts if it stops. `status.sh` should show everything OK except Tailscale, which comes next. To check the app itself, `curl http://127.0.0.1:4730/api/hello` should answer with a hello, using your `API_PORT`.
 
-## 6. Turn on HTTPS through Tailscale
+## 6. Give it an address through Tailscale
 
-1. In the [Tailscale admin console](https://login.tailscale.com/admin/dns), under **DNS**, turn on **MagicDNS** and **HTTPS Certificates**.
-2. Find Tailscale's command line tool. If `tailscale version` works in Terminal, use `tailscale`. Otherwise, with the Tailscale app from the App Store or Tailscale's website, it's inside the app; add this line to `~/.zshrc` and open a new Terminal window:
+Tailscale Services gives Pretty Penny its own name on your tailnet, served from this Mac, with an HTTPS certificate. The steps use the name `budget`; any name works, as long as it's the same everywhere.
+
+1. **Use Tailscale's standalone app**, version 1.86 or later. The App Store version can't host Services. If you have it, quit and delete it, then install the app from [Tailscale's website](https://tailscale.com/download/mac) and sign in.
+2. **Find Tailscale's command line tool.** If `tailscale version` works in Terminal, use `tailscale`. Otherwise add this line to `~/.zshrc` and open a new Terminal window:
 
    ```sh
    alias tailscale=/Applications/Tailscale.app/Contents/MacOS/Tailscale
    ```
 
-3. Serve Pretty Penny over HTTPS on your tailnet. This keeps running in the background and survives restarts.
+3. **Turn on MagicDNS and HTTPS Certificates** in the [Tailscale admin console](https://login.tailscale.com/admin/dns), under **DNS**.
+4. **Allow a server tag, and let it serve `budget` without asking each time.** In the admin console's **Access controls**, add these inside the policy's outer braces, merging with any `tagOwners` or `autoApprovers` already there, and save:
 
-   ```sh
-   tailscale serve --bg 3001
+   ```json
+   "tagOwners": { "tag:server": [] },
+   "autoApprovers": { "services": { "svc:budget": ["tag:server"] } },
    ```
 
-   It prints the address, like `https://mac-mini.your-tailnet.ts.net`. If it reports that serving isn't supported, install the standalone Tailscale app from [Tailscale's website](https://tailscale.com/download/mac) instead of the App Store version, then try again.
+   If the policy has `grants` or `acls` that don't already let your devices reach everything, also add this grant, so they can reach Pretty Penny:
 
-4. Put that address in `.env` as `PUBLIC_URL`, with no slash at the end, then restart and check:
+   ```json
+   { "src": ["autogroup:member"], "dst": ["svc:budget"], "ip": ["443"] }
+   ```
+
+5. **Tag this Mac.** On the **Machines** page, open its **⋯** menu, choose **Edit tags**, add `tag:server`, and save. Only tagged devices can host Services. A tagged device belongs to the tailnet rather than to you, its key no longer expires, and it can't go back to having no tags.
+6. **Define the Service.** On the **Services** page, choose **Advertise**, then **Define a Service**. Name it `budget`, with the port `tcp:443`.
+7. **Serve Pretty Penny under it**, from its port:
 
    ```sh
-   deploy/install-service.sh
+   tailscale serve --service=svc:budget --https=443 127.0.0.1:4730
+   tailscale serve status
+   ```
+
+   It runs in the background. The tag and policy approve it automatically; if the **Services** page shows this Mac as pending, select **Approve**.
+
+8. **Check.** `PUBLIC_URL` in `.env` must be `https://budget.` followed by your tailnet's name and `.ts.net`, with no slash at the end. If you changed it, run `deploy/install-service.sh`. Then:
+
+   ```sh
    deploy/status.sh
    ```
 
-   Everything should now be OK.
+   Everything should now be OK. After the Mac's first restart, run `tailscale serve status` once to confirm the Service is still served.
+
+To serve another app from this Mac later, give it its own port, an `autoApprovers` line and a Service with its own name, and serve it the same way. Each Service has its own address on port 443, so they never clash.
 
 ## 7. Use it
 
-On your phone and laptop, open the address from step 6 and sign in. Your devices need to be connected to Tailscale.
+On your phone and laptop, open `https://budget.your-tailnet.ts.net`, with your tailnet's name, and sign in. Your devices need to be connected to Tailscale, which works from anywhere, not just at home.
 
 - **iPhone**: in Safari, tap Share, then **Add to Home Screen**, for a penny icon that opens Pretty Penny full screen.
 - **Coming from YNAB**: open **Import from YNAB** in the menu.
@@ -201,7 +222,7 @@ Pretty Penny stays reachable only on your tailnet. It asks Plaid for updates eve
 3. **Register the address banks send you back to.** Many banks sign you in on their own site and then return you to Pretty Penny. In the dashboard's **API** settings, under **Allowed redirect URIs**, add your `PUBLIC_URL` followed by `/bank/oauth`, such as:
 
    ```text
-   https://mac-mini.your-tailnet.ts.net/bank/oauth
+   https://budget.your-tailnet.ts.net/bank/oauth
    ```
 
 4. **Make an encryption key.** Pretty Penny encrypts Plaid's access to your banks with this key before saving it. The key stays in `.env`, which isn't in the database or its backups.
@@ -241,7 +262,8 @@ Start with `deploy/status.sh`, which checks each part.
 - **Postgres isn't running**: `brew services restart postgresql@17`.
 - **The service isn't loaded**: `deploy/install-service.sh`.
 - **Pretty Penny doesn't answer**: read the end of its log, `~/Library/Logs/PrettyPenny/com.prettypenny.server.log`. A wrong `DATABASE_URL` shows up there.
-- **Tailscale isn't serving**: `tailscale serve status`, and `tailscale serve --bg 3001` again if needed.
+- **Tailscale isn't serving**: `tailscale serve status`. If `svc:budget` is missing, run step 6's `tailscale serve --service=…` again. If the **Services** page shows this Mac as pending, approve it, and check step 6's `autoApprovers` line.
+- **The address doesn't load**: check that Tailscale is connected on the device you're using, and that the policy lets it reach `svc:budget`.
 - **"Changes must come from Pretty Penny itself"**: `PUBLIC_URL` in `.env` doesn't match the address you opened. Fix it, then `deploy/install-service.sh`.
 - **A backup folder fails**: the status line says why. "Doesn't exist" usually means the drive isn't connected. "Not allowed" means the Full Disk Access step under Backing up is needed again.
 - **A bank needs you to sign in again**: banks ask for this every so often. Open **Bank connections** and select **Fix connection**, which uses the same login.
